@@ -10,11 +10,22 @@
     "type": "git",
     "url": "git+https://github.com/CobeBriant/planet-pk.git"
   },
-  "keywords": ["planet", "space", "game", "kids", "education"],
+  "keywords": [
+    "planet",
+    "space",
+    "game",
+    "kids",
+    "education"
+  ],
   "author": "CobeBriant",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/CobeBriant/planet-pk/issues"
   },
-  "homepage": "https://github.com/CobeBriant/planet-pk#readme"
+  "homepage": "https://github.com/CobeBriant/planet-pk#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0"
+  }
 }

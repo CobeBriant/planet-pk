@@ -151,7 +151,8 @@ html, body {
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 60px 20px 0;
+  padding: 70px 12px 0;
+  min-height: 0;
 }
 
 .pk-vs {
@@ -159,7 +160,7 @@ html, body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 32px;
+  font-size: clamp(22px, 6vw, 32px);
   font-weight: 900;
   color: rgba(255, 255, 255, 0.15);
   z-index: 1;
@@ -171,14 +172,24 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   z-index: 2;
+  min-width: 0;
 }
 
 .pk-canvas-wrap {
+  width: clamp(120px, 38vw, 170px);
+  height: clamp(120px, 38vw, 170px);
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.pk-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .pk-name {
@@ -196,36 +207,38 @@ html, body {
 
 .pk-question {
   text-align: center;
-  padding: 16px 20px;
+  padding: 12px 20px;
   color: rgba(180, 200, 240, 0.9);
-  font-size: 16px;
+  font-size: clamp(15px, 4.2vw, 18px);
+  line-height: 1.4;
 }
 
 .pk-question .highlight {
   color: #6CF;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .pk-buttons {
   display: flex;
   gap: 12px;
-  padding: 16px 20px 32px;
+  padding: 12px 20px calc(24px + env(safe-area-inset-bottom, 0px));
   justify-content: center;
 }
 
 .pk-choice-btn {
   flex: 1;
   max-width: 180px;
-  padding: 18px 0;
+  min-width: 0;
+  padding: 16px 6px;
   border: 1px solid rgba(100, 130, 255, 0.4);
   border-radius: 16px;
   background: rgba(30, 30, 60, 0.8);
   color: #fff;
-  font-size: 16px;
+  font-size: clamp(14px, 4vw, 16px);
   font-weight: 600;
   cursor: pointer;
   text-align: center;
-  transition: transform 0.1s;
+  transition: transform 0.1s, background 0.15s;
 }
 
 .pk-choice-btn:active {
@@ -253,11 +266,14 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  background: rgba(0, 0, 0, 0.7);
+  gap: 14px;
+  padding: 70px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: opacity 0.25s;
 }
 
 .result-overlay.show {
@@ -275,11 +291,16 @@ html, body {
 
 .result-desc {
   font-size: 14px;
-  color: rgba(200, 220, 255, 0.85);
-  max-width: 320px;
+  color: rgba(200, 220, 255, 0.9);
+  max-width: 340px;
   text-align: center;
-  line-height: 1.6;
-  padding: 0 20px;
+  line-height: 1.65;
+  padding: 0 12px;
+}
+
+#result-comparison-canvas {
+  display: block;
+  max-width: 100%;
 }
 
 .result-comparison {
@@ -448,3 +469,35 @@ html, body {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 rgba(100, 255, 130, 0); }
+  50% { box-shadow: 0 0 24px rgba(100, 255, 130, 0.35); }
+}
+
+.pk-choice-btn.correct {
+  background: rgba(30, 120, 60, 0.92);
+  border-color: rgba(80, 255, 130, 0.8);
+  animation: pulseGlow 0.6s ease-in-out 2;
+}
+
+.pk-choice-btn.wrong {
+  background: rgba(150, 30, 30, 0.92);
+  border-color: rgba(255, 90, 90, 0.8);
+}
+
+@keyframes pkWin {
+  0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(80,255,130,0)); }
+  40% { transform: scale(1.08); filter: drop-shadow(0 0 16px rgba(80,255,130,0.4)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(80,255,130,0)); }
+}
+
+@keyframes pkLose {
+  0% { transform: scale(1); filter: grayscale(0); }
+  100% { transform: scale(0.85); filter: grayscale(0.7) brightness(0.7); }
+}
+
+.pk-side.winner { animation: pkWin 0.7s ease-out; }
+.pk-side.loser { animation: pkLose 0.7s ease-out forwards; }
+
+#pk-screen.shake { animation: shake 0.35s; }

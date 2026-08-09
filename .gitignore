@@ -27,3 +27,4 @@ android/app/capacitor.build.gradle
 
 # Capacitor
 capacitor.config.ts
+www/
