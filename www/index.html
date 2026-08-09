@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#000000">
+  <title>星球PK</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 星空背景 -->
+  <canvas id="starfield"></canvas>
+
+  <!-- ===== 主菜单 ===== -->
+  <div class="menu-screen" id="menu-screen">
+    <div class="menu-title">星球PK</div>
+    <div class="menu-subtitle">探索宇宙天体的大小奥秘</div>
+    <div style="height: 12px;"></div>
+    <button class="menu-btn" id="btn-pk">
+      <span class="icon">VS</span>
+      PK 对战
+    </button>
+    <button class="menu-btn" id="btn-explore">
+      <span class="icon">O</span>
+      自由探索
+    </button>
+  </div>
+
+  <!-- ===== PK对战 ===== -->
+  <div class="pk-screen" id="pk-screen" style="display:none;">
+    <!-- 顶部HUD -->
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-pk">← 返回</button>
+      <div class="score-box">
+        <div class="score-label" id="round-info">第 1 / 10 题</div>
+        <div>
+          <span class="score-value" id="score-value">0</span>
+          <span class="combo-badge" id="combo-badge" style="display:none;">0连击</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 对战区域 -->
+    <div class="pk-arena">
+      <div class="pk-side">
+        <div class="pk-canvas-wrap">
+          <canvas id="pk-canvas-a"></canvas>
+        </div>
+        <div class="pk-name" id="pk-name-a">天体A</div>
+      </div>
+      <div class="pk-vs">VS</div>
+      <div class="pk-side">
+        <div class="pk-canvas-wrap">
+          <canvas id="pk-canvas-b"></canvas>
+        </div>
+        <div class="pk-name" id="pk-name-b">天体B</div>
+      </div>
+    </div>
+
+    <!-- 问题 -->
+    <div class="pk-question" id="pk-question">
+      哪个天体<span class="highlight">更大</span>？
+    </div>
+
+    <!-- 选择按钮 -->
+    <div class="pk-buttons">
+      <button class="pk-choice-btn" id="pk-btn-a">← 左边</button>
+      <button class="pk-choice-btn" id="pk-btn-b">右边 →</button>
+    </div>
+
+    <!-- 结果反馈 -->
+    <div class="result-overlay" id="result-overlay">
+      <div class="result-text" id="result-text">答对了！</div>
+      <canvas id="result-comparison-canvas"></canvas>
+      <div class="result-desc" id="result-desc"></div>
+      <button class="result-next-btn" id="result-next-btn">下一题 →</button>
+    </div>
+  </div>
+
+  <!-- ===== 探索模式 ===== -->
+  <div class="explore-screen" id="explore-screen" style="display:none;">
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-explore">← 返回</button>
+      <div class="score-box">
+        <div class="score-label">探索模式</div>
+        <div class="score-value" style="font-size:14px;">上下滑动</div>
+      </div>
+    </div>
+    <div class="explore-scale-hint" id="explore-scale-hint"></div>
+    <canvas id="explore-canvas"></canvas>
+    <div class="explore-info" id="explore-info">
+      <div class="explore-info-name" id="explore-info-name">天体名称</div>
+      <div class="explore-info-type" id="explore-info-type">类型</div>
+      <div class="explore-info-desc" id="explore-info-desc">描述</div>
+      <div class="explore-info-stats">
+        <div class="explore-stat">
+          <div class="explore-stat-label">半径</div>
+          <div class="explore-stat-value" id="explore-stat-radius">--</div>
+        </div>
+        <div class="explore-stat">
+          <div class="explore-stat-label">质量</div>
+          <div class="explore-stat-value" id="explore-stat-mass">--</div>
+        </div>
+      </div>
+      <button class="result-next-btn" id="explore-info-close" style="margin-top:12px;width:100%;">关闭</button>
+    </div>
+  </div>
+
+  <!-- ===== 游戏结束 ===== -->
+  <div class="gameover-screen" id="gameover-screen" style="display:none;">
+    <div class="gameover-title" id="gameover-title">游戏结束</div>
+    <div class="gameover-score" id="gameover-score">0</div>
+    <div class="gameover-stats" id="gameover-stats"></div>
+    <div style="display:flex;gap:12px;margin-top:12px;">
+      <button class="menu-btn" id="btn-replay" style="width:140px;font-size:16px;">再来一局</button>
+      <button class="menu-btn" id="btn-menu" style="width:140px;font-size:16px;">主菜单</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

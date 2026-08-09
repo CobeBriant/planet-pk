@@ -58,32 +58,47 @@ python3 -m http.server 8080
 
 ## 打包 Android APK
 
-### 前置条件
-- Node.js 18+
-- Android Studio
-- Java JDK 17+
+### 方式一：直接使用已构建的 APK（推荐）
 
-### 步骤
+仓库根目录已包含构建好的 APK：
+```
+planet-pk.apk  (3.9MB)
+```
+
+安装方法：
+```bash
+# ADB 安装（需开启 USB 调试）
+adb install planet-pk.apk
+
+# 或将 APK 文件传到手机，直接打开安装
+```
+
+### 方式二：从命令行构建 APK（无需 Android Studio）
+
+前置条件：
+- Node.js 18+
+- Java JDK 21+（推荐 [Temurin JDK 21](https://adoptium.net/)）
+- Android Command-line Tools（非 Android Studio）
 
 ```bash
 # 1. 安装 Capacitor
 cd planet-pk
-npm init -y
 npm install @capacitor/core @capacitor/cli @capacitor/android
 
-# 2. 初始化 Capacitor
-npx cap init "星球PK" "com.planetpk.game" --web-dir="."
+# 2. 初始化（如未做过）
+npx cap init "星球PK" "com.planetpk.game" --web-dir="www"
 
 # 3. 添加 Android 平台
 npx cap add android
 
-# 4. 同步资源
-npx cap sync
+# 4. 同步 web 资源
+npx cap sync android
 
-# 5. 在 Android Studio 中打开
-npx cap open android
-
-# 6. 在 Android Studio 中点击 Build → Build APK
+# 5. 构建 APK（设置 JAVA_HOME 和 ANDROID_HOME）
+export JAVA_HOME=/path/to/jdk-21
+export ANDROID_HOME=/path/to/android-sdk
+cd android
+./gradlew assembleDebug
 ```
 
 生成的 APK 位于：
@@ -91,28 +106,22 @@ npx cap open android
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### 安装到手机
-
-```bash
-# 方式一：ADB 安装
-adb install android/app/build/outputs/apk/debug/app-debug.apk
-
-# 方式二：将 APK 文件传到手机，直接打开安装
-```
-
 ## 项目结构
 
 ```
 planet-pk/
-├── index.html          # 主页面
+├── index.html              # 主页面
 ├── css/
-│   └── style.css       # 样式
+│   └── style.css           # 样式
 ├── js/
-│   ├── data.js         # 天体数据（真实天文数据）
-│   └── game.js         # 游戏逻辑
-├── assets/             # 资源目录（图标等）
-├── README.md           # 本文件
-└── capacitor.config.ts # Capacitor 配置（打包时生成）
+│   ├── data.js             # 天体数据（真实天文数据）
+│   └── game.js             # 游戏逻辑
+├── www/                    # Capacitor web 资源目录（同上三者的副本）
+├── android/                # Capacitor Android 项目
+├── capacitor.config.json   # Capacitor 配置
+├── planet-pk.apk           # 已构建的 APK（可直接安装）
+├── package.json            # npm 依赖
+└── README.md               # 本文件
 ```
 
 ## 自定义

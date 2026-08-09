@@ -12,11 +12,18 @@ Thumbs.db
 node_modules/
 package-lock.json
 
-# Android
-android/
-*.apk
+# Android build artifacts (keep source, ignore build output)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor.settings.gradle
+android/app/capacitor.build.gradle
 *.aab
 *.keystore
+
+# Keep the APK release artifact
+!planet-pk.apk
 
 # Capacitor
 capacitor.config.ts

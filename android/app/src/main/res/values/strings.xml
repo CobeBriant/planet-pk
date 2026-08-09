@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">星球PK</string>
+    <string name="title_activity_main">星球PK</string>
+    <string name="package_name">com.planetpk.game</string>
+    <string name="custom_url_scheme">com.planetpk.game</string>
+</resources>

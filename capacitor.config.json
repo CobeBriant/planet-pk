@@ -1,0 +1,8 @@
+{
+  "appId": "com.planetpk.game",
+  "appName": "星球PK",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#000014"
+  }
+}

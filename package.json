@@ -1,0 +1,20 @@
+{
+  "name": "planet-pk",
+  "version": "1.0.0",
+  "description": "星球PK - 宇宙天体大小对比科普游戏",
+  "main": "index.html",
+  "scripts": {
+    "build:android": "cap sync android && cap build android"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CobeBriant/planet-pk.git"
+  },
+  "keywords": ["planet", "space", "game", "kids", "education"],
+  "author": "CobeBriant",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/CobeBriant/planet-pk/issues"
+  },
+  "homepage": "https://github.com/CobeBriant/planet-pk#readme"
+}
