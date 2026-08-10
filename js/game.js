@@ -1,6 +1,7 @@
 /**
- * 星球PK — 主游戏逻辑（增强版）
- * 模式: PK对战 + 探索模式
+ * 星球PK — 主游戏逻辑 V3
+ * 使用真实天体纹理图片 + 程序化 fallback
+ * 增强 PK 动效 + 粒子特效
  */
 
 (function() {
@@ -18,6 +19,8 @@
     currentPair: null,
     answered: false,
     pkAnimation: null,
+    imagesLoaded: false,
+    particles: [],
   };
 
   // ========== 工具函数 ==========
@@ -35,7 +38,6 @@
     return Math.abs(h);
   }
 
-  // 可复现的伪随机（用天体 id 做种子）
   function mulberry32(a) {
     return function() {
       let t = a += 0x6D2B79F5;
@@ -46,14 +48,14 @@
   }
 
   function formatNum(n) {
-    if (n >= 1e42) return (n / 1e42).toFixed(1) + ' ×10⁴² kg';
-    if (n >= 1e30) return (n / 1e30).toFixed(2) + ' ×10³⁰ kg';
-    if (n >= 1e24) return (n / 1e24).toFixed(2) + ' ×10²⁴ kg';
-    if (n >= 1e20) return (n / 1e20).toFixed(2) + ' ×10²⁰ kg';
-    if (n >= 1e15) return (n / 1e15).toFixed(1) + ' ×10¹⁵ km';
-    if (n >= 1e9) return (n / 1e9).toFixed(1) + ' ×10⁹ km';
-    if (n >= 1e6) return (n / 1e6).toFixed(1) + ' ×10⁶ km';
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + ' ×10³ km';
+    if (n >= 1e42) return (n / 1e42).toFixed(1) + ' x10^42 kg';
+    if (n >= 1e30) return (n / 1e30).toFixed(2) + ' x10^30 kg';
+    if (n >= 1e24) return (n / 1e24).toFixed(2) + ' x10^24 kg';
+    if (n >= 1e20) return (n / 1e20).toFixed(2) + ' x10^20 kg';
+    if (n >= 1e15) return (n / 1e15).toFixed(1) + ' x10^15 km';
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + ' x10^9 km';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + ' x10^6 km';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + ' x10^3 km';
     return n.toFixed(1) + ' km';
   }
 
@@ -62,6 +64,46 @@
     if (r >= 1e9) return (r / 1e6).toFixed(1) + ' 百万 km';
     if (r >= 1e6) return (r / 1e3).toFixed(0) + ' 千 km';
     return r.toLocaleString() + ' km';
+  }
+
+  // ========== 图片加载系统 ==========
+  const imageCache = {};
+
+  function preloadImages(callback) {
+    const bodiesWithImages = CELESTIAL_DATA.filter(b => b.image);
+    let loaded = 0;
+    const total = bodiesWithImages.length;
+
+    if (total === 0) {
+      STATE.imagesLoaded = true;
+      callback();
+      return;
+    }
+
+    bodiesWithImages.forEach(body => {
+      const img = new Image();
+      img.onload = () => {
+        imageCache[body.id] = img;
+        loaded++;
+        if (loaded >= total) {
+          STATE.imagesLoaded = true;
+          callback();
+        }
+      };
+      img.onerror = () => {
+        loaded++;
+        if (loaded >= total) {
+          STATE.imagesLoaded = true;
+          callback();
+        }
+      };
+      img.src = 'assets/images/' + body.image;
+    });
+
+    // Also load ring image
+    const ringImg = new Image();
+    ringImg.onload = () => { imageCache['saturn_ring'] = ringImg; };
+    ringImg.src = 'assets/images/saturn_ring.png';
   }
 
   // ========== 天体池与配对 ==========
@@ -74,7 +116,6 @@
     return CELESTIAL_DATA.slice();
   }
 
-  // 避免同一局内重复出现同一天体
   function pickPair(round) {
     const pool = getPoolForRound(round);
     const shuffled = shuffle(pool);
@@ -88,21 +129,14 @@
     return !!(body.style && body.style.ring);
   }
 
-  // ========== 程序化天体贴图 ==========
-  const SPRITE_SIZE = 256;
-  const SPRITE_R = 100;
-  const SPRITE_C = SPRITE_SIZE / 2;
-  const spriteCache = {};
-
+  // ========== 颜色工具 ==========
   function hexToRgb(hex) {
     const n = parseInt(hex.replace('#', ''), 16);
     return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
   }
-
   function rgbToHex(r, g, b) {
     return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
   }
-
   function lighten(hex, p) {
     const c = hexToRgb(hex);
     return rgbToHex(c.r + p, c.g + p, c.b + p);
@@ -123,14 +157,132 @@
     ctx.fill();
   }
 
+  // ========== 精灵生成 ==========
+  const SPRITE_SIZE = 256;
+  const SPRITE_R = 96; // 球体半径（留余量给光环/光芒）
+  const SPRITE_C = SPRITE_SIZE / 2;
+  const spriteCache = {};
+
   function getSprite(body) {
     if (!spriteCache[body.id]) {
-      spriteCache[body.id] = generateSprite(body);
+      if (body.image && imageCache[body.id]) {
+        spriteCache[body.id] = generateTextureSprite(body);
+      } else {
+        spriteCache[body.id] = generateProceduralSprite(body);
+      }
     }
     return spriteCache[body.id];
   }
 
-  function generateSprite(body) {
+  // ---- 真实纹理精灵 ----
+  function generateTextureSprite(body) {
+    const c = document.createElement('canvas');
+    c.width = SPRITE_SIZE;
+    c.height = SPRITE_SIZE;
+    const ctx = c.getContext('2d');
+    const img = imageCache[body.id];
+    const r = SPRITE_R;
+
+    // 土星环：后半部分
+    if (isRinged(body) && imageCache['saturn_ring']) {
+      drawRingBack(ctx, SPRITE_C, SPRITE_C, r);
+    }
+
+    // 球体：纹理裁剪到圆形
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // 拉伸纹理覆盖球体区域
+    ctx.drawImage(img, SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
+    ctx.restore();
+
+    // 3D 球体着色：左上亮、右下暗
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    const shade = ctx.createRadialGradient(
+      SPRITE_C - r * 0.4, SPRITE_C - r * 0.4, r * 0.1,
+      SPRITE_C, SPRITE_C, r * 1.1
+    );
+    shade.addColorStop(0, 'rgba(255,255,255,0.18)');
+    shade.addColorStop(0.5, 'rgba(255,255,255,0)');
+    shade.addColorStop(0.8, 'rgba(0,0,0,0.25)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = shade;
+    ctx.fillRect(SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
+    ctx.restore();
+
+    // 边缘暗化
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
+    ctx.clip();
+    const edge = ctx.createRadialGradient(SPRITE_C, SPRITE_C, r * 0.85, SPRITE_C, SPRITE_C, r);
+    edge.addColorStop(0, 'rgba(0,0,0,0)');
+    edge.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = edge;
+    ctx.fillRect(SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
+    ctx.restore();
+
+    // 太阳额外发光
+    if (body.id === 'sun') {
+    const corona = ctx.createRadialGradient(SPRITE_C, SPRITE_C, r * 0.7, SPRITE_C, SPRITE_C, r * 1.5);
+    corona.addColorStop(0, 'rgba(255,200,50,0.3)');
+    corona.addColorStop(0.5, 'rgba(255,140,30,0.1)');
+    corona.addColorStop(1, 'rgba(255,100,20,0)');
+    ctx.fillStyle = corona;
+    ctx.beginPath();
+    ctx.arc(SPRITE_C, SPRITE_C, r * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    }
+
+    // 土星环：前半部分
+    if (isRinged(body) && imageCache['saturn_ring']) {
+      drawRingFront(ctx, SPRITE_C, SPRITE_C, r);
+    }
+
+    return c;
+  }
+
+  // ---- 土星环渲染 ----
+  function drawRingBack(ctx, cx, cy, r) {
+    const ringImg = imageCache['saturn_ring'];
+    if (!ringImg) return;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-0.3);
+    // 后半环
+    ctx.beginPath();
+    ctx.rect(-SPRITE_SIZE, -SPRITE_SIZE, SPRITE_SIZE * 2, SPRITE_SIZE);
+    ctx.clip();
+    const rw = r * 2.3;
+    const rh = r * 0.6;
+    ctx.drawImage(ringImg, -rw / 2, -rh / 2, rw, rh);
+    ctx.restore();
+  }
+
+  function drawRingFront(ctx, cx, cy, r) {
+    const ringImg = imageCache['saturn_ring'];
+    if (!ringImg) return;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-0.3);
+    // 前半环
+    ctx.beginPath();
+    ctx.rect(-SPRITE_SIZE, 0, SPRITE_SIZE * 2, SPRITE_SIZE);
+    ctx.clip();
+    const rw = r * 2.3;
+    const rh = r * 0.6;
+    ctx.drawImage(ringImg, -rw / 2, -rh / 2, rw, rh);
+    ctx.restore();
+  }
+
+  // ---- 程序化精灵 (fallback) ----
+  function generateProceduralSprite(body) {
     const c = document.createElement('canvas');
     c.width = SPRITE_SIZE;
     c.height = SPRITE_SIZE;
@@ -138,15 +290,12 @@
     const rng = mulberry32(hashCode(body.id));
     const style = body.style || {};
 
-    // 背景透明
     ctx.clearRect(0, 0, SPRITE_SIZE, SPRITE_SIZE);
 
-    // 光环（土星）—— 先画在主体后面
     if (style.ring) {
-      drawRing(ctx, SPRITE_C, SPRITE_C, SPRITE_R, body.color);
+      drawProceduralRing(ctx, SPRITE_C, SPRITE_C, SPRITE_R, body.color);
     }
 
-    // 按类型绘制
     switch (style.type) {
       case 'rocky': drawRocky(ctx, body, rng); break;
       case 'cloudy': drawCloudy(ctx, body, rng); break;
@@ -165,7 +314,7 @@
     return c;
   }
 
-  function drawRing(ctx, cx, cy, r, color) {
+  function drawProceduralRing(ctx, cx, cy, r, color) {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(-0.25);
@@ -202,7 +351,6 @@
       ctx.arc(x, y, r + 1, 0, Math.PI * 2);
       ctx.stroke();
     }
-    // 冥王星心形
     if (body.style && body.style.heart) {
       ctx.fillStyle = 'rgba(180,120,120,0.35)';
       ctx.beginPath();
@@ -216,13 +364,12 @@
 
   function drawCloudy(ctx, body, rng) {
     radialSphere(ctx, SPRITE_C, SPRITE_C, SPRITE_R, body.color);
-    // 云层纹理
     ctx.save();
     ctx.globalCompositeOperation = 'source-atop';
     for (let i = 0; i < 8; i++) {
       const y = SPRITE_C - SPRITE_R + rng() * SPRITE_R * 2;
       const h = 5 + rng() * 18;
-      ctx.fillStyle = `rgba(255,255,255,${0.15 + rng() * 0.15})`;
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.15 + rng() * 0.15) + ')';
       ctx.beginPath();
       ctx.ellipse(SPRITE_C + (rng() - 0.5) * 60, y, SPRITE_R * (0.7 + rng() * 0.3), h, (rng() - 0.5) * 0.2, 0, Math.PI * 2);
       ctx.fill();
@@ -231,11 +378,9 @@
   }
 
   function drawEarth(ctx, body, rng) {
-    // 海洋背景
     radialSphere(ctx, SPRITE_C, SPRITE_C, SPRITE_R, '#1E5B8C');
     ctx.save();
     ctx.globalCompositeOperation = 'source-atop';
-    // 大陆
     const continents = 4 + Math.floor(rng() * 3);
     for (let i = 0; i < continents; i++) {
       const a = rng() * Math.PI * 2;
@@ -252,7 +397,6 @@
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    // 白云
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     for (let i = 0; i < 6; i++) {
       const a = rng() * Math.PI * 2;
@@ -261,14 +405,6 @@
       ctx.ellipse(SPRITE_C + Math.cos(a) * d, SPRITE_C + Math.sin(a) * d, 12 + rng() * 10, 5 + rng() * 4, rng() * Math.PI, 0, Math.PI * 2);
       ctx.fill();
     }
-    // 极冠
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.beginPath();
-    ctx.ellipse(SPRITE_C - 28, SPRITE_C - SPRITE_R + 18, 28, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(SPRITE_C + 20, SPRITE_C + SPRITE_R - 18, 30, 14, 0, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   }
 
@@ -276,7 +412,6 @@
     radialSphere(ctx, SPRITE_C, SPRITE_C, SPRITE_R, body.color);
     ctx.save();
     ctx.globalCompositeOperation = 'source-atop';
-    // 水平条纹
     const bands = 7 + Math.floor(rng() * 4);
     const step = (SPRITE_R * 2) / bands;
     for (let i = 0; i < bands; i++) {
@@ -285,7 +420,6 @@
       ctx.fillStyle = isDark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.12)';
       ctx.fillRect(SPRITE_C - SPRITE_R, y, SPRITE_R * 2, step * 0.85);
     }
-    // 大红斑/风暴
     if (body.style && body.style.spot) {
       ctx.fillStyle = 'rgba(180,60,40,0.65)';
       ctx.beginPath();
@@ -299,13 +433,11 @@
     radialSphere(ctx, SPRITE_C, SPRITE_C, SPRITE_R, body.color);
     ctx.save();
     ctx.globalCompositeOperation = 'source-atop';
-    // 柔和的云带
     for (let i = 0; i < 5; i++) {
       const y = SPRITE_C - SPRITE_R + (i + 0.5) * (SPRITE_R * 2 / 5);
-      ctx.fillStyle = `rgba(255,255,255,${0.1 + rng() * 0.1})`;
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.1 + rng() * 0.1) + ')';
       ctx.fillRect(SPRITE_C - SPRITE_R, y, SPRITE_R * 2, 4 + rng() * 8);
     }
-    // 海王星大暗斑
     if (body.style && body.style.storm) {
       ctx.fillStyle = 'rgba(30,40,120,0.5)';
       ctx.beginPath();
@@ -317,7 +449,6 @@
 
   function drawHazy(ctx, body, rng) {
     radialSphere(ctx, SPRITE_C, SPRITE_C, SPRITE_R, body.color);
-    // 浓厚大气层
     const g = ctx.createRadialGradient(SPRITE_C, SPRITE_C, SPRITE_R * 0.7, SPRITE_C, SPRITE_C, SPRITE_R * 1.25);
     g.addColorStop(0, 'rgba(255,180,80,0)');
     g.addColorStop(0.7, 'rgba(255,180,80,0.25)');
@@ -347,7 +478,6 @@
   }
 
   function drawSun(ctx, body, rng) {
-    // 日冕
     const corona = ctx.createRadialGradient(SPRITE_C, SPRITE_C, SPRITE_R * 0.6, SPRITE_C, SPRITE_C, SPRITE_R * 1.35);
     corona.addColorStop(0, 'rgba(255,200,50,0.35)');
     corona.addColorStop(0.5, 'rgba(255,140,30,0.12)');
@@ -356,16 +486,14 @@
     ctx.beginPath();
     ctx.arc(SPRITE_C, SPRITE_C, SPRITE_R * 1.35, 0, Math.PI * 2);
     ctx.fill();
-    // 主体
     radialSphere(ctx, SPRITE_C, SPRITE_C, SPRITE_R, '#FFD700');
-    // 光斑
     ctx.save();
     ctx.globalCompositeOperation = 'source-atop';
     for (let i = 0; i < 12; i++) {
       const a = rng() * Math.PI * 2;
       const d = rng() * SPRITE_R * 0.8;
       const r = 4 + rng() * 10;
-      ctx.fillStyle = `rgba(255,255,180,${0.15 + rng() * 0.2})`;
+      ctx.fillStyle = 'rgba(255,255,180,' + (0.15 + rng() * 0.2) + ')';
       ctx.beginPath();
       ctx.arc(SPRITE_C + Math.cos(a) * d, SPRITE_C + Math.sin(a) * d, r, 0, Math.PI * 2);
       ctx.fill();
@@ -374,7 +502,6 @@
   }
 
   function drawStar(ctx, body, rng) {
-    // 光芒
     const spikes = 12;
     ctx.save();
     ctx.translate(SPRITE_C, SPRITE_C);
@@ -391,7 +518,6 @@
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-    // 核心
     radialSphere(ctx, SPRITE_C, SPRITE_C, SPRITE_R * 0.9, body.color);
   }
 
@@ -399,7 +525,6 @@
     ctx.save();
     ctx.translate(SPRITE_C, SPRITE_C);
     ctx.rotate(rng() * Math.PI);
-    // 星系盘
     const g = ctx.createRadialGradient(0, 0, 5, 0, 0, SPRITE_R * 1.1);
     g.addColorStop(0, 'rgba(255,255,255,0.8)');
     g.addColorStop(0.2, body.color + 'CC');
@@ -415,7 +540,6 @@
       ctx.ellipse(0, 0, SPRITE_R * 1.05, SPRITE_R * 0.75, 0, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      // 螺旋臂
       ctx.beginPath();
       ctx.ellipse(0, 0, SPRITE_R * 0.95, SPRITE_R * 0.35, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -436,7 +560,6 @@
         ctx.stroke();
       }
     }
-    // 核心亮核
     const core = ctx.createRadialGradient(0, 0, 2, 0, 0, SPRITE_R * 0.25);
     core.addColorStop(0, 'rgba(255,255,230,0.9)');
     core.addColorStop(1, 'rgba(255,255,230,0)');
@@ -448,7 +571,6 @@
   }
 
   function drawBlackHole(ctx, body, rng) {
-    // 吸积盘
     ctx.save();
     ctx.translate(SPRITE_C, SPRITE_C);
     ctx.rotate(-0.3);
@@ -462,13 +584,11 @@
     ctx.ellipse(0, 0, SPRITE_R * 1.35, SPRITE_R * 0.42, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-    // 光子环
     ctx.strokeStyle = 'rgba(255,230,180,0.6)';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(SPRITE_C, SPRITE_C, SPRITE_R * 0.55, 0, Math.PI * 2);
     ctx.stroke();
-    // 事件视界
     ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.arc(SPRITE_C, SPRITE_C, SPRITE_R * 0.5, 0, Math.PI * 2);
@@ -494,23 +614,23 @@
     if (realRadius <= 0) return 4;
     const logR = Math.log10(realRadius);
     const logMax = Math.log10(maxRealRadius);
-    const minLog = 2.5; // 约 300 km
+    const minLog = 2.5;
     const t = (logR - minLog) / (logMax - minLog);
     return Math.max(6, Math.min(maxPixelRadius, t * maxPixelRadius + 6));
   }
 
-  // 计算某天体在给定画布半长 S 内能使用的最大球体半径（含光环/星系臂余量）
   function getMaxSphereRadius(body, halfSize) {
-    const padding = 10;
+    const padding = 8;
     let visualFactor = 1.0;
-    if (isRinged(body)) visualFactor = 1.85;
-    else if (body.category === 'star') visualFactor = 1.35;
-    else if (body.category === 'galaxy') visualFactor = 1.25;
-    else if (body.category === 'blackhole') visualFactor = 1.55;
+    if (isRinged(body)) visualFactor = 1.3; // 纹理环已经包含在精灵里
+    else if (body.category === 'star' && !body.image) visualFactor = 1.35;
+    else if (body.category === 'galaxy') visualFactor = 1.15;
+    else if (body.category === 'blackhole') visualFactor = 1.5;
     return (halfSize - padding) / visualFactor;
   }
 
-  function renderBody(canvas, body, maxRealRadius, opts = {}) {
+  function renderBody(canvas, body, maxRealRadius, opts) {
+    opts = opts || {};
     setupCanvas(canvas);
     const size = canvas._cssSize;
     const half = size / 2;
@@ -527,49 +647,92 @@
     const scale = opts.scale || 1;
 
     ctx.save();
-    ctx.globalAlpha = opts.alpha ?? 1;
+    ctx.globalAlpha = opts.alpha != null ? opts.alpha : 1;
     ctx.translate(half, half);
     ctx.scale(scale, scale);
     ctx.translate(-half, -half);
 
     // 外发光
-    const glowColor = opts.glowColor || body.color;
-    const glowR = sphereR * (body.category === 'star' ? 1.5 : 1.3);
-    const glow = ctx.createRadialGradient(half, half, sphereR * 0.8, half, half, glowR);
-    glow.addColorStop(0, glowColor + '60');
-    glow.addColorStop(1, glowColor + '00');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(half, half, glowR, 0, Math.PI * 2);
-    ctx.fill();
+    if (body.category === 'star' || opts.glowColor) {
+      const glowColor = opts.glowColor || body.color;
+      const glowR = sphereR * 1.4;
+      const glow = ctx.createRadialGradient(half, half, sphereR * 0.7, half, half, glowR);
+      glow.addColorStop(0, glowColor + '40');
+      glow.addColorStop(1, glowColor + '00');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(half, half, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // 绘制精灵
     ctx.drawImage(sprite, half - drawSize / 2, half - drawSize / 2, drawSize, drawSize);
 
     ctx.restore();
 
-    // 标记 ✓ / ✗
+    // 标记
     if (opts.mark) {
       ctx.save();
-      const markSize = Math.min(size * 0.35, 54);
+      const markSize = Math.min(size * 0.32, 48);
       ctx.translate(half, half);
       if (opts.mark === 'win') {
-        ctx.fillStyle = 'rgba(30,180,80,0.85)';
-        ctx.shadowColor = 'rgba(30,255,80,0.8)';
+        ctx.fillStyle = 'rgba(40,200,80,0.9)';
+        ctx.shadowColor = 'rgba(40,255,80,0.9)';
       } else {
-        ctx.fillStyle = 'rgba(220,50,50,0.85)';
-        ctx.shadowColor = 'rgba(255,60,60,0.8)';
+        ctx.fillStyle = 'rgba(220,50,50,0.9)';
+        ctx.shadowColor = 'rgba(255,60,60,0.9)';
       }
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 16;
       ctx.beginPath();
       ctx.arc(0, 0, markSize / 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.font = `bold ${markSize * 0.6}px sans-serif`;
+      ctx.font = 'bold ' + (markSize * 0.6) + 'px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.shadowBlur = 0;
-      ctx.fillText(opts.mark === 'win' ? '✓' : '✗', 0, 2);
+      ctx.fillText(opts.mark === 'win' ? '\u2713' : '\u2717', 0, 2);
+      ctx.restore();
+    }
+  }
+
+  // ========== 粒子系统 ==========
+  function spawnParticles(x, y, color, count, isWin) {
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      const speed = 2 + Math.random() * 4;
+      STATE.particles.push({
+        x: x, y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1.0,
+        decay: 0.015 + Math.random() * 0.01,
+        size: 3 + Math.random() * 4,
+        color: color,
+        isWin: isWin,
+      });
+    }
+  }
+
+  function updateAndDrawParticles(ctx) {
+    for (let i = STATE.particles.length - 1; i >= 0; i--) {
+      const p = STATE.particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.15; // gravity
+      p.life -= p.decay;
+      if (p.life <= 0) {
+        STATE.particles.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -604,10 +767,14 @@
       for (const s of stars) {
         s.alpha += s.speed;
         if (s.alpha > 1 || s.alpha < 0.15) s.speed = -s.speed;
-        ctx.fillStyle = `rgba(200, 220, 255, ${s.alpha})`;
+        ctx.fillStyle = 'rgba(200, 220, 255, ' + s.alpha + ')';
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
+      }
+      // 粒子
+      if (STATE.particles.length > 0) {
+        updateAndDrawParticles(ctx);
       }
       requestAnimationFrame(animate);
     }
@@ -665,7 +832,7 @@
     STATE.currentPair.compareType = compareType;
 
     const questionText = compareType === 'radius' ? '更大' : '更重';
-    $('pk-question').innerHTML = `哪个天体<span class="highlight">${questionText}</span>？`;
+    $('pk-question').innerHTML = '\u54ea\u4e2a\u5929\u4f53<span class="highlight">' + questionText + '</span>\uff1f';
 
     const pair = STATE.currentPair;
     const maxR = Math.max(pair.a.radius, pair.b.radius);
@@ -680,8 +847,8 @@
     const btnB = $('pk-btn-b');
     btnA.className = 'pk-choice-btn';
     btnB.className = 'pk-choice-btn';
-    btnA.textContent = '← ' + pair.a.name;
-    btnB.textContent = pair.b.name + ' →';
+    btnA.textContent = '\u2190 ' + pair.a.name;
+    btnB.textContent = pair.b.name + ' \u2192';
   }
 
   function answer(side) {
@@ -713,61 +880,81 @@
       STATE.correctCount++;
     } else {
       STATE.combo = 0;
+      // 屏幕抖动
+      $('pk-screen').classList.add('shake');
+      setTimeout(function() { $('pk-screen').classList.remove('shake'); }, 350);
     }
     updateHUD();
 
-    // 播放对战结果动画
     playPKAnimation(correctSide, isCorrect);
   }
 
   function playPKAnimation(correctSide, isCorrect) {
     const start = performance.now();
-    const duration = 900;
-    STATE.pkAnimation = { start, duration, correctSide, isCorrect };
+    const duration = 1000;
+    STATE.pkAnimation = { start: start, duration: duration, correctSide: correctSide, isCorrect: isCorrect };
+
+    // 粒子爆发位置
+    var canvasA = $('pk-canvas-a');
+    var canvasB = $('pk-canvas-b');
+    var rectA = canvasA.getBoundingClientRect();
+    var rectB = canvasB.getBoundingClientRect();
+    var cx = window.innerWidth / 2;
+    var cy = window.innerHeight / 2;
+
+    var winX = correctSide === 'a' ? rectA.left + rectA.width / 2 : rectB.left + rectB.width / 2;
+    var loseX = correctSide === 'a' ? rectB.left + rectB.width / 2 : rectA.left + rectA.width / 2;
+    var winColor = isCorrect ? '#5F5' : '#5F5';
+    var loseColor = '#F55';
+
+    spawnParticles(winX, cy, winColor, 20, true);
+    spawnParticles(loseX, cy, loseColor, 12, false);
 
     function step(now) {
       if (!STATE.pkAnimation) return;
-      const anim = STATE.pkAnimation;
-      const t = Math.min((now - anim.start) / anim.duration, 1);
-      const pair = STATE.currentPair;
-      const maxR = Math.max(pair.a.radius, pair.b.radius);
+      var anim = STATE.pkAnimation;
+      var t = Math.min((now - anim.start) / anim.duration, 1);
+      var pair = STATE.currentPair;
+      var maxR = Math.max(pair.a.radius, pair.b.radius);
 
-      // 赢家放大脉冲，输家缩小
-      const winnerScale = 1 + 0.18 * Math.sin(t * Math.PI);
-      const loserScale = 1 - 0.25 * t;
-      const winAlpha = 1;
-      const loseAlpha = 1 - 0.35 * t;
-      const winGlow = anim.isCorrect ? '#6F6' : '#6F6';
-      const loseGlow = '#F66';
+      // 赢家放大脉冲
+      var winnerScale = 1 + 0.2 * Math.sin(t * Math.PI);
+      // 输家缩小+倾斜
+      var loserScale = 1 - 0.3 * t;
 
-      const markA = correctSide === 'a' ? 'win' : 'lose';
-      const markB = correctSide === 'b' ? 'win' : 'lose';
+      var winAlpha = 1;
+      var loseAlpha = 1 - 0.4 * t;
+      var winGlow = '#5F5';
+      var loseGlow = '#F55';
+
+      var markA = correctSide === 'a' ? 'win' : 'lose';
+      var markB = correctSide === 'b' ? 'win' : 'lose';
 
       if (correctSide === 'a') {
-        renderBody($('pk-canvas-a'), pair.a, maxR, { scale: winnerScale, glowColor: winGlow, alpha: winAlpha, mark: markA });
-        renderBody($('pk-canvas-b'), pair.b, maxR, { scale: loserScale, glowColor: loseGlow, alpha: loseAlpha, mark: markB });
+        renderBody(canvasA, pair.a, maxR, { scale: winnerScale, glowColor: winGlow, alpha: winAlpha, mark: markA });
+        renderBody(canvasB, pair.b, maxR, { scale: loserScale, glowColor: loseGlow, alpha: loseAlpha, mark: markB });
       } else {
-        renderBody($('pk-canvas-a'), pair.a, maxR, { scale: loserScale, glowColor: loseGlow, alpha: loseAlpha, mark: markA });
-        renderBody($('pk-canvas-b'), pair.b, maxR, { scale: winnerScale, glowColor: winGlow, alpha: winAlpha, mark: markB });
+        renderBody(canvasA, pair.a, maxR, { scale: loserScale, glowColor: loseGlow, alpha: loseAlpha, mark: markA });
+        renderBody(canvasB, pair.b, maxR, { scale: winnerScale, glowColor: winGlow, alpha: winAlpha, mark: markB });
       }
 
       if (t < 1) {
         requestAnimationFrame(step);
       } else {
         cancelPKAnimation();
-        setTimeout(() => showResult(anim.isCorrect, pair, pair.compareType), 150);
+        setTimeout(function() { showResult(anim.isCorrect, pair, pair.compareType); }, 150);
       }
     }
     requestAnimationFrame(step);
   }
 
   function showResult(isCorrect, pair, prop) {
-    const overlay = $('result-overlay');
-    const winner = pair.a[prop] > pair.b[prop] ? pair.a : pair.b;
-    const loser = pair.a[prop] > pair.b[prop] ? pair.b : pair.a;
-    const ratio = winner[prop] / loser[prop];
+    var overlay = $('result-overlay');
+    var winner = pair.a[prop] > pair.b[prop] ? pair.a : pair.b;
+    var loser = pair.a[prop] > pair.b[prop] ? pair.b : pair.a;
+    var ratio = winner[prop] / loser[prop];
 
-    let ratioText;
+    var ratioText;
     if (ratio > 1000) {
       ratioText = ratio.toExponential(1) + ' 倍';
     } else if (ratio > 10) {
@@ -776,65 +963,64 @@
       ratioText = ratio.toFixed(1) + ' 倍';
     }
 
-    const propText = prop === 'radius' ? '半径' : '质量';
+    var propText = prop === 'radius' ? '半径' : '质量';
 
-    $('result-text').textContent = isCorrect ? '答对了！' : '答错了';
+    $('result-text').textContent = isCorrect ? '\u7b54\u5bf9\u4e86\uff01' : '\u7b54\u9519\u4e86';
     $('result-text').className = 'result-text ' + (isCorrect ? 'correct' : 'wrong');
 
     $('result-desc').innerHTML =
-      `<b style="color:${winner.color}">${winner.name}</b> 的${propText}是 <b style="color:${loser.color}">${loser.name}</b> 的 <span style="color:#6CF;font-size:18px;font-weight:700">${ratioText}</span><br><br>` +
-      `${winner.name}: ${prop === 'radius' ? formatRadius(winner.radius) : formatNum(winner.mass)}<br>` +
-      `${loser.name}: ${prop === 'radius' ? formatRadius(loser.radius) : formatNum(loser.mass)}<br><br>` +
-      `<span style="font-size:13px;color:rgba(160,180,220,0.7)">${winner.desc}</span>`;
+      '<b style="color:' + winner.color + '">' + winner.name + '</b> 的' + propText + '是 <b style="color:' + loser.color + '">' + loser.name + '</b> 的 <span style="color:#6CF;font-size:18px;font-weight:700">' + ratioText + '</span><br><br>' +
+      winner.name + ': ' + (prop === 'radius' ? formatRadius(winner.radius) : formatNum(winner.mass)) + '<br>' +
+      loser.name + ': ' + (prop === 'radius' ? formatRadius(loser.radius) : formatNum(loser.mass)) + '<br><br>' +
+      '<span style="font-size:13px;color:rgba(160,180,220,0.7)">' + winner.desc + '</span>';
 
     drawResultComparison(winner, loser);
     overlay.classList.add('show');
   }
 
   function drawResultComparison(winner, loser) {
-    const canvas = $('result-comparison-canvas');
-    const dpr = window.devicePixelRatio || 1;
-    const w = 320;
-    const h = 130;
+    var canvas = $('result-comparison-canvas');
+    var dpr = window.devicePixelRatio || 1;
+    var w = Math.min(320, window.innerWidth - 40);
+    var h = 130;
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
-    const ctx = canvas.getContext('2d');
+    var ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
 
-    const maxR = Math.max(winner.radius, loser.radius);
-    const maxPx = 48;
-    const rWinner = getRenderRadius(winner.radius, maxR, maxPx);
-    const rLoser = getRenderRadius(loser.radius, maxR, maxPx);
+    var maxR = Math.max(winner.radius, loser.radius);
+    var maxPx = 48;
+    var rWinner = getRenderRadius(winner.radius, maxR, maxPx);
+    var rLoser = getRenderRadius(loser.radius, maxR, maxPx);
 
-    drawMiniBody(ctx, 70, 60, rWinner, winner);
-    drawMiniBody(ctx, 240, 60, rLoser, loser);
+    drawMiniBody(ctx, w * 0.22, 55, rWinner, winner);
+    drawMiniBody(ctx, w * 0.75, 55, rLoser, loser);
 
     ctx.fillStyle = 'rgba(200,220,255,0.7)';
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(winner.name, 70, 115);
-    ctx.fillText(loser.name, 240, 115);
+    ctx.fillText(winner.name, w * 0.22, 115);
+    ctx.fillText(loser.name, w * 0.75, 115);
 
-    // 箭头
     ctx.strokeStyle = '#6CF';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(110, 60);
-    ctx.lineTo(190, 60);
-    ctx.lineTo(185, 55);
-    ctx.moveTo(190, 60);
-    ctx.lineTo(185, 65);
+    ctx.moveTo(w * 0.22 + 55, 55);
+    ctx.lineTo(w * 0.75 - 55, 55);
+    ctx.lineTo(w * 0.75 - 60, 50);
+    ctx.moveTo(w * 0.75 - 55, 55);
+    ctx.lineTo(w * 0.75 - 60, 60);
     ctx.stroke();
   }
 
   function drawMiniBody(ctx, cx, cy, r, body) {
-    const sprite = getSprite(body);
-    const scale = r / SPRITE_R;
-    const drawSize = SPRITE_SIZE * scale;
+    var sprite = getSprite(body);
+    var scale = r / SPRITE_R;
+    var drawSize = SPRITE_SIZE * scale;
     ctx.drawImage(sprite, cx - drawSize / 2, cy - drawSize / 2, drawSize, drawSize);
   }
 
@@ -843,14 +1029,14 @@
     hideAll();
     $('gameover-screen').style.display = 'flex';
 
-    const accuracy = ((STATE.correctCount / STATE.totalRounds) * 100).toFixed(0);
+    var accuracy = ((STATE.correctCount / STATE.totalRounds) * 100).toFixed(0);
     $('gameover-score').textContent = STATE.score;
     $('gameover-stats').innerHTML =
-      `答对 ${STATE.correctCount} / ${STATE.totalRounds} 题<br>` +
-      `正确率 ${accuracy}%<br>` +
-      `最高连击 ${STATE.maxCombo} 连击`;
+      '答对 ' + STATE.correctCount + ' / ' + STATE.totalRounds + ' 题<br>' +
+      '正确率 ' + accuracy + '%<br>' +
+      '最高连击 ' + STATE.maxCombo + ' 连击';
 
-    let title = '继续努力！';
+    var title = '继续努力！';
     if (STATE.correctCount === STATE.totalRounds) title = '宇宙大师！';
     else if (STATE.correctCount >= 12) title = '星空学者！';
     else if (STATE.correctCount >= 8) title = '太空探险家！';
@@ -859,18 +1045,18 @@
 
   function updateHUD() {
     $('score-value').textContent = STATE.score;
-    const comboEl = $('combo-badge');
+    var comboEl = $('combo-badge');
     if (STATE.combo > 1) {
       comboEl.textContent = STATE.combo + '连击';
       comboEl.style.display = 'inline-block';
     } else {
       comboEl.style.display = 'none';
     }
-    $('round-info').textContent = `第 ${STATE.round} / ${STATE.totalRounds} 题`;
+    $('round-info').textContent = '第 ' + STATE.round + ' / ' + STATE.totalRounds + ' 题';
   }
 
   // ========== 探索模式 ==========
-  let exploreState = {
+  var exploreState = {
     index: 0,
     sortedData: [],
   };
@@ -879,41 +1065,40 @@
     STATE.mode = 'explore';
     hideAll();
     $('explore-screen').style.display = 'block';
-    exploreState.sortedData = CELESTIAL_DATA.slice().sort((a, b) => a.radius - b.radius);
+    exploreState.sortedData = CELESTIAL_DATA.slice().sort(function(a, b) { return a.radius - b.radius; });
     exploreState.index = Math.floor(exploreState.sortedData.length / 2);
     renderExplore();
     $('explore-scale-hint').textContent = '上下滑动探索宇宙尺度，点击查看详情';
   }
 
   function renderExplore() {
-    const canvas = $('explore-canvas');
-    const dpr = window.devicePixelRatio || 1;
+    var canvas = $('explore-canvas');
+    var dpr = window.devicePixelRatio || 1;
     canvas.width = Math.floor(window.innerWidth * dpr);
     canvas.height = Math.floor(window.innerHeight * dpr);
     canvas.style.width = window.innerWidth + 'px';
     canvas.style.height = window.innerHeight + 'px';
-    const ctx = canvas.getContext('2d');
+    var ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
 
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const cx = w / 2;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var cx = w / 2;
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
 
-    const data = exploreState.sortedData;
-    const currentData = data[exploreState.index];
+    var data = exploreState.sortedData;
+    var currentData = data[exploreState.index];
 
-    const half = Math.min(w, h) * 0.35;
-    const maxR = getMaxSphereRadius(currentData, half);
-    const renderR = Math.min(getRenderRadius(currentData.radius, data[data.length - 1].radius, half), maxR);
+    var half = Math.min(w, h) * 0.32;
+    var maxR = getMaxSphereRadius(currentData, half);
+    var renderR = Math.min(getRenderRadius(currentData.radius, data[data.length - 1].radius, half), maxR);
 
-    const cy = h / 2;
+    var cy = h / 2;
     drawExploreBody(ctx, cx, cy, renderR, currentData);
 
-    // 名字
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px sans-serif';
     ctx.textAlign = 'center';
@@ -927,25 +1112,23 @@
     ctx.font = '14px sans-serif';
     ctx.fillText(formatRadius(currentData.radius), cx, cy + renderR + 88);
 
-    // 上下提示
     if (exploreState.index > 0) {
-      const prev = data[exploreState.index - 1];
+      var prev = data[exploreState.index - 1];
       ctx.fillStyle = 'rgba(160, 180, 220, 0.35)';
       ctx.font = '14px sans-serif';
-      ctx.fillText('↑ ' + prev.name, cx, 90);
+      ctx.fillText('\u2191 ' + prev.name, cx, 90);
     }
     if (exploreState.index < data.length - 1) {
-      const next = data[exploreState.index + 1];
+      var next = data[exploreState.index + 1];
       ctx.fillStyle = 'rgba(160, 180, 220, 0.35)';
       ctx.font = '14px sans-serif';
-      ctx.fillText('↓ ' + next.name, cx, h - 150);
+      ctx.fillText('\u2193 ' + next.name, cx, h - 150);
     }
 
-    // 进度条
-    const totalSteps = data.length;
-    const progress = exploreState.index / (totalSteps - 1);
-    const barH = h - 220;
-    const barY = 110;
+    var totalSteps = data.length;
+    var progress = exploreState.index / (totalSteps - 1);
+    var barH = h - 220;
+    var barY = 110;
     ctx.strokeStyle = 'rgba(100, 130, 255, 0.25)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -960,15 +1143,15 @@
   }
 
   function drawExploreBody(ctx, cx, cy, r, body) {
-    const sprite = getSprite(body);
-    const scale = r / SPRITE_R;
-    const drawSize = SPRITE_SIZE * scale;
+    var sprite = getSprite(body);
+    var scale = r / SPRITE_R;
+    var drawSize = SPRITE_SIZE * scale;
     ctx.drawImage(sprite, cx - drawSize / 2, cy - drawSize / 2, drawSize, drawSize);
   }
 
   function showExploreInfo() {
-    const data = exploreState.sortedData[exploreState.index];
-    const typeMap = {
+    var data = exploreState.sortedData[exploreState.index];
+    var typeMap = {
       planet: '行星',
       dwarf: '矮行星',
       moon: '卫星',
@@ -990,19 +1173,19 @@
   }
 
   function initExploreTouch() {
-    const canvas = $('explore-canvas');
-    let startY = 0;
-    let isDragging = false;
+    var canvas = $('explore-canvas');
+    var startY = 0;
+    var isDragging = false;
 
-    canvas.addEventListener('touchstart', (e) => {
+    canvas.addEventListener('touchstart', function(e) {
       startY = e.touches[0].clientY;
       isDragging = true;
       hideExploreInfo();
     });
 
-    canvas.addEventListener('touchmove', (e) => {
+    canvas.addEventListener('touchmove', function(e) {
       if (!isDragging) return;
-      const dy = e.touches[0].clientY - startY;
+      var dy = e.touches[0].clientY - startY;
       if (Math.abs(dy) > 50) {
         if (dy < 0 && exploreState.index < exploreState.sortedData.length - 1) {
           exploreState.index++;
@@ -1016,15 +1199,15 @@
       }
     });
 
-    canvas.addEventListener('touchend', () => {
+    canvas.addEventListener('touchend', function() {
       isDragging = false;
     });
 
-    canvas.addEventListener('click', () => {
+    canvas.addEventListener('click', function() {
       showExploreInfo();
     });
 
-    canvas.addEventListener('wheel', (e) => {
+    canvas.addEventListener('wheel', function(e) {
       e.preventDefault();
       if (e.deltaY > 0 && exploreState.index < exploreState.sortedData.length - 1) {
         exploreState.index++;
@@ -1042,8 +1225,8 @@
     $('btn-pk').addEventListener('click', startPK);
     $('btn-explore').addEventListener('click', startExplore);
 
-    $('pk-btn-a').addEventListener('click', () => answer('a'));
-    $('pk-btn-b').addEventListener('click', () => answer('b'));
+    $('pk-btn-a').addEventListener('click', function() { answer('a'); });
+    $('pk-btn-b').addEventListener('click', function() { answer('b'); });
 
     $('result-next-btn').addEventListener('click', nextRound);
 
@@ -1056,14 +1239,20 @@
     initExploreTouch();
     $('explore-info-close').addEventListener('click', hideExploreInfo);
 
-    window.addEventListener('resize', () => {
+    window.addEventListener('resize', function() {
       if (STATE.mode === 'pk' && STATE.currentPair && !STATE.pkAnimation) {
-        const maxR = Math.max(STATE.currentPair.a.radius, STATE.currentPair.b.radius);
+        var maxR = Math.max(STATE.currentPair.a.radius, STATE.currentPair.b.radius);
         renderBody($('pk-canvas-a'), STATE.currentPair.a, maxR);
         renderBody($('pk-canvas-b'), STATE.currentPair.b, maxR);
       } else if (STATE.mode === 'explore') {
         renderExplore();
       }
+    });
+
+    // 预加载图片
+    preloadImages(function() {
+      // 清除精灵缓存（如果有）
+      Object.keys(spriteCache).forEach(function(k) { delete spriteCache[k]; });
     });
 
     showMenu();
