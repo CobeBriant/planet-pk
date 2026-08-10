@@ -1,7 +1,8 @@
 /**
- * 星球PK — 主游戏逻辑 V3
+ * 星球PK — 主游戏逻辑 V4
  * 使用真实天体纹理图片 + 程序化 fallback
  * 增强 PK 动效 + 粒子特效
+ * 支持自定义天体（我的星系）
  */
 
 (function() {
@@ -21,7 +22,14 @@
     pkAnimation: null,
     imagesLoaded: false,
     particles: [],
+    autoNextTimer: null,
+    resultShown: false,
   };
+
+  const CUSTOM_KEY = 'planet_pk_custom_bodies';
+  let CUSTOM_BODIES = [];
+  let editingCustomId = null;
+  let pendingCustomPhoto = null;
 
   // ========== 工具函数 ==========
   function $(id) { return document.getElementById(id); }
@@ -66,11 +74,64 @@
     return r.toLocaleString() + ' km';
   }
 
+  function parseNumberInput(val) {
+    if (!val) return 0;
+    val = String(val).trim().replace(/,/g, '');
+    if (val.indexOf('e') !== -1 || val.indexOf('E') !== -1) {
+      return parseFloat(val);
+    }
+    return parseFloat(val);
+  }
+
+  // ========== 自定义天体持久化 ==========
+  function loadCustomBodies() {
+    try {
+      const raw = localStorage.getItem(CUSTOM_KEY);
+      if (raw) {
+        CUSTOM_BODIES = JSON.parse(raw);
+      }
+    } catch (e) {
+      CUSTOM_BODIES = [];
+    }
+    if (!Array.isArray(CUSTOM_BODIES)) CUSTOM_BODIES = [];
+    // 给每个自定义天体补齐字段
+    CUSTOM_BODIES.forEach(b => {
+      b.isCustom = true;
+      if (!b.style) b.style = { type: guessStyleType(b.category) };
+      if (!b.color) b.color = '#6CF';
+      if (!b.nameEn) b.nameEn = b.name;
+    });
+  }
+
+  function saveCustomBodies() {
+    try {
+      localStorage.setItem(CUSTOM_KEY, JSON.stringify(CUSTOM_BODIES));
+    } catch (e) {
+      alert('保存失败，可能是照片太大。建议压缩图片后重试。');
+    }
+  }
+
+  function guessStyleType(category) {
+    switch (category) {
+      case 'planet': return 'rocky';
+      case 'moon': return 'rocky';
+      case 'star': return 'star';
+      case 'galaxy': return 'galaxy';
+      case 'blackhole': return 'blackhole';
+      case 'dwarf': return 'rocky';
+      default: return 'rocky';
+    }
+  }
+
+  function getAllBodies() {
+    return CELESTIAL_DATA.concat(CUSTOM_BODIES);
+  }
+
   // ========== 图片加载系统 ==========
   const imageCache = {};
 
   function preloadImages(callback) {
-    const bodiesWithImages = CELESTIAL_DATA.filter(b => b.image);
+    const bodiesWithImages = getAllBodies().filter(b => b.image && !b.isCustom);
     let loaded = 0;
     const total = bodiesWithImages.length;
 
@@ -108,12 +169,13 @@
 
   // ========== 天体池与配对 ==========
   function getPoolForRound(round) {
+    const all = getAllBodies();
     if (round <= 4) {
-      return CELESTIAL_DATA.filter(d => d.category === 'planet' || d.category === 'dwarf' || d.category === 'moon');
+      return all.filter(d => d.category === 'planet' || d.category === 'dwarf' || d.category === 'moon' || d.category === 'other');
     } else if (round <= 9) {
-      return CELESTIAL_DATA.filter(d => d.category !== 'galaxy' && d.category !== 'blackhole');
+      return all.filter(d => d.category !== 'galaxy' && d.category !== 'blackhole');
     }
-    return CELESTIAL_DATA.slice();
+    return all.slice();
   }
 
   function pickPair(round) {
@@ -121,7 +183,9 @@
     const shuffled = shuffle(pool);
     let a = shuffled[0];
     let b = shuffled[1];
-    if (a.id === b.id) b = shuffled[2] || shuffled[0];
+    if (!a) a = getAllBodies()[0];
+    if (!b) b = getAllBodies()[1] || a;
+    if (a.id === b.id) b = shuffled[2] || shuffled[0] || getAllBodies()[1] || a;
     return { a, b };
   }
 
@@ -159,7 +223,7 @@
 
   // ========== 精灵生成 ==========
   const SPRITE_SIZE = 256;
-  const SPRITE_R = 96; // 球体半径（留余量给光环/光芒）
+  const SPRITE_R = 96;
   const SPRITE_C = SPRITE_SIZE / 2;
   const spriteCache = {};
 
@@ -167,11 +231,17 @@
     if (!spriteCache[body.id]) {
       if (body.image && imageCache[body.id]) {
         spriteCache[body.id] = generateTextureSprite(body);
+      } else if (body.isCustom && body.customImage) {
+        spriteCache[body.id] = generateCustomSprite(body);
       } else {
         spriteCache[body.id] = generateProceduralSprite(body);
       }
     }
     return spriteCache[body.id];
+  }
+
+  function invalidateSprite(id) {
+    delete spriteCache[id];
   }
 
   // ---- 真实纹理精灵 ----
@@ -183,22 +253,18 @@
     const img = imageCache[body.id];
     const r = SPRITE_R;
 
-    // 土星环：后半部分
     if (isRinged(body) && imageCache['saturn_ring']) {
       drawRingBack(ctx, SPRITE_C, SPRITE_C, r);
     }
 
-    // 球体：纹理裁剪到圆形
     ctx.save();
     ctx.beginPath();
     ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // 拉伸纹理覆盖球体区域
     ctx.drawImage(img, SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
     ctx.restore();
 
-    // 3D 球体着色：左上亮、右下暗
     ctx.save();
     ctx.beginPath();
     ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
@@ -216,7 +282,6 @@
     ctx.fillRect(SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
     ctx.restore();
 
-    // 边缘暗化
     ctx.save();
     ctx.beginPath();
     ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
@@ -228,22 +293,80 @@
     ctx.fillRect(SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
     ctx.restore();
 
-    // 太阳额外发光
     if (body.id === 'sun') {
-    const corona = ctx.createRadialGradient(SPRITE_C, SPRITE_C, r * 0.7, SPRITE_C, SPRITE_C, r * 1.5);
-    corona.addColorStop(0, 'rgba(255,200,50,0.3)');
-    corona.addColorStop(0.5, 'rgba(255,140,30,0.1)');
-    corona.addColorStop(1, 'rgba(255,100,20,0)');
-    ctx.fillStyle = corona;
-    ctx.beginPath();
-    ctx.arc(SPRITE_C, SPRITE_C, r * 1.5, 0, Math.PI * 2);
-    ctx.fill();
+      const corona = ctx.createRadialGradient(SPRITE_C, SPRITE_C, r * 0.7, SPRITE_C, SPRITE_C, r * 1.5);
+      corona.addColorStop(0, 'rgba(255,200,50,0.3)');
+      corona.addColorStop(0.5, 'rgba(255,140,30,0.1)');
+      corona.addColorStop(1, 'rgba(255,100,20,0)');
+      ctx.fillStyle = corona;
+      ctx.beginPath();
+      ctx.arc(SPRITE_C, SPRITE_C, r * 1.5, 0, Math.PI * 2);
+      ctx.fill();
     }
 
-    // 土星环：前半部分
     if (isRinged(body) && imageCache['saturn_ring']) {
       drawRingFront(ctx, SPRITE_C, SPRITE_C, r);
     }
+
+    return c;
+  }
+
+  // ---- 自定义照片精灵 ----
+  function generateCustomSprite(body) {
+    const c = document.createElement('canvas');
+    c.width = SPRITE_SIZE;
+    c.height = SPRITE_SIZE;
+    const ctx = c.getContext('2d');
+    const img = body.customImage ? imageCache[body.id] : null;
+    const r = SPRITE_R;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    if (img) {
+      const aspect = img.width / img.height;
+      let sw, sh, sx, sy;
+      if (aspect > 1) {
+        sh = img.height;
+        sw = img.height;
+        sx = (img.width - sw) / 2;
+        sy = 0;
+      } else {
+        sw = img.width;
+        sh = img.width;
+        sx = 0;
+        sy = (img.height - sh) / 2;
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
+    } else {
+      radialSphere(ctx, SPRITE_C, SPRITE_C, r, body.color || '#6CF');
+    }
+    ctx.restore();
+
+    // 3D 球体着色
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(SPRITE_C, SPRITE_C, r, 0, Math.PI * 2);
+    ctx.clip();
+    const shade = ctx.createRadialGradient(
+      SPRITE_C - r * 0.4, SPRITE_C - r * 0.4, r * 0.1,
+      SPRITE_C, SPRITE_C, r * 1.1
+    );
+    shade.addColorStop(0, 'rgba(255,255,255,0.15)');
+    shade.addColorStop(0.5, 'rgba(255,255,255,0)');
+    shade.addColorStop(0.8, 'rgba(0,0,0,0.2)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = shade;
+    ctx.fillRect(SPRITE_C - r, SPRITE_C - r, r * 2, r * 2);
+    ctx.restore();
+
+    // 自定义标识小圆点
+    ctx.fillStyle = '#6CF';
+    ctx.beginPath();
+    ctx.arc(SPRITE_C + r * 0.65, SPRITE_C - r * 0.65, 6, 0, Math.PI * 2);
+    ctx.fill();
 
     return c;
   }
@@ -255,7 +378,6 @@
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(-0.3);
-    // 后半环
     ctx.beginPath();
     ctx.rect(-SPRITE_SIZE, -SPRITE_SIZE, SPRITE_SIZE * 2, SPRITE_SIZE);
     ctx.clip();
@@ -271,7 +393,6 @@
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(-0.3);
-    // 前半环
     ctx.beginPath();
     ctx.rect(-SPRITE_SIZE, 0, SPRITE_SIZE * 2, SPRITE_SIZE);
     ctx.clip();
@@ -622,7 +743,7 @@
   function getMaxSphereRadius(body, halfSize) {
     const padding = 8;
     let visualFactor = 1.0;
-    if (isRinged(body)) visualFactor = 1.3; // 纹理环已经包含在精灵里
+    if (isRinged(body)) visualFactor = 1.3;
     else if (body.category === 'star' && !body.image) visualFactor = 1.35;
     else if (body.category === 'galaxy') visualFactor = 1.15;
     else if (body.category === 'blackhole') visualFactor = 1.5;
@@ -652,7 +773,6 @@
     ctx.scale(scale, scale);
     ctx.translate(-half, -half);
 
-    // 外发光
     if (body.category === 'star' || opts.glowColor) {
       const glowColor = opts.glowColor || body.color;
       const glowR = sphereR * 1.4;
@@ -665,12 +785,10 @@
       ctx.fill();
     }
 
-    // 绘制精灵
     ctx.drawImage(sprite, half - drawSize / 2, half - drawSize / 2, drawSize, drawSize);
 
     ctx.restore();
 
-    // 标记
     if (opts.mark) {
       ctx.save();
       const markSize = Math.min(size * 0.32, 48);
@@ -719,7 +837,7 @@
       const p = STATE.particles[i];
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += 0.15; // gravity
+      p.vy += 0.15;
       p.life -= p.decay;
       if (p.life <= 0) {
         STATE.particles.splice(i, 1);
@@ -772,7 +890,6 @@
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
       }
-      // 粒子
       if (STATE.particles.length > 0) {
         updateAndDrawParticles(ctx);
       }
@@ -792,13 +909,22 @@
     $('menu-screen').style.display = 'none';
     $('pk-screen').style.display = 'none';
     $('explore-screen').style.display = 'none';
+    $('custom-screen').style.display = 'none';
     $('gameover-screen').style.display = 'none';
     $('result-overlay').classList.remove('show');
+    clearAutoNext();
     cancelPKAnimation();
   }
 
   function cancelPKAnimation() {
     STATE.pkAnimation = null;
+  }
+
+  function clearAutoNext() {
+    if (STATE.autoNextTimer) {
+      clearTimeout(STATE.autoNextTimer);
+      STATE.autoNextTimer = null;
+    }
   }
 
   // ========== PK 对战模式 ==========
@@ -822,7 +948,9 @@
     }
 
     STATE.answered = false;
+    STATE.resultShown = false;
     cancelPKAnimation();
+    clearAutoNext();
     STATE.currentPair = pickPair(STATE.round);
     $('result-overlay').classList.remove('show');
 
@@ -880,55 +1008,56 @@
       STATE.correctCount++;
     } else {
       STATE.combo = 0;
-      // 屏幕抖动
       $('pk-screen').classList.add('shake');
       setTimeout(function() { $('pk-screen').classList.remove('shake'); }, 350);
     }
     updateHUD();
 
     playPKAnimation(correctSide, isCorrect);
+
+    // 安全兜底：即使动画异常，1.2秒后一定显示结果
+    setTimeout(function() {
+      if (!STATE.resultShown && STATE.mode === 'pk') {
+        showResult(isCorrect, pair, prop);
+      }
+    }, 1200);
   }
 
   function playPKAnimation(correctSide, isCorrect) {
     const start = performance.now();
-    const duration = 1000;
+    const duration = 900;
     STATE.pkAnimation = { start: start, duration: duration, correctSide: correctSide, isCorrect: isCorrect };
 
-    // 粒子爆发位置
-    var canvasA = $('pk-canvas-a');
-    var canvasB = $('pk-canvas-b');
-    var rectA = canvasA.getBoundingClientRect();
-    var rectB = canvasB.getBoundingClientRect();
-    var cx = window.innerWidth / 2;
-    var cy = window.innerHeight / 2;
+    const canvasA = $('pk-canvas-a');
+    const canvasB = $('pk-canvas-b');
+    const rectA = canvasA.getBoundingClientRect();
+    const rectB = canvasB.getBoundingClientRect();
+    const cy = window.innerHeight / 2;
 
-    var winX = correctSide === 'a' ? rectA.left + rectA.width / 2 : rectB.left + rectB.width / 2;
-    var loseX = correctSide === 'a' ? rectB.left + rectB.width / 2 : rectA.left + rectA.width / 2;
-    var winColor = isCorrect ? '#5F5' : '#5F5';
-    var loseColor = '#F55';
+    const winX = correctSide === 'a' ? rectA.left + rectA.width / 2 : rectB.left + rectB.width / 2;
+    const loseX = correctSide === 'a' ? rectB.left + rectB.width / 2 : rectA.left + rectA.width / 2;
+    const winColor = '#5F5';
+    const loseColor = '#F55';
 
     spawnParticles(winX, cy, winColor, 20, true);
     spawnParticles(loseX, cy, loseColor, 12, false);
 
     function step(now) {
       if (!STATE.pkAnimation) return;
-      var anim = STATE.pkAnimation;
-      var t = Math.min((now - anim.start) / anim.duration, 1);
-      var pair = STATE.currentPair;
-      var maxR = Math.max(pair.a.radius, pair.b.radius);
+      const anim = STATE.pkAnimation;
+      const t = Math.min((now - anim.start) / anim.duration, 1);
+      const pair = STATE.currentPair;
+      const maxR = Math.max(pair.a.radius, pair.b.radius);
 
-      // 赢家放大脉冲
-      var winnerScale = 1 + 0.2 * Math.sin(t * Math.PI);
-      // 输家缩小+倾斜
-      var loserScale = 1 - 0.3 * t;
+      const winnerScale = 1 + 0.18 * Math.sin(t * Math.PI);
+      const loserScale = 1 - 0.25 * t;
+      const winAlpha = 1;
+      const loseAlpha = 1 - 0.35 * t;
+      const winGlow = '#5F5';
+      const loseGlow = '#F55';
 
-      var winAlpha = 1;
-      var loseAlpha = 1 - 0.4 * t;
-      var winGlow = '#5F5';
-      var loseGlow = '#F55';
-
-      var markA = correctSide === 'a' ? 'win' : 'lose';
-      var markB = correctSide === 'b' ? 'win' : 'lose';
+      const markA = correctSide === 'a' ? 'win' : 'lose';
+      const markB = correctSide === 'b' ? 'win' : 'lose';
 
       if (correctSide === 'a') {
         renderBody(canvasA, pair.a, maxR, { scale: winnerScale, glowColor: winGlow, alpha: winAlpha, mark: markA });
@@ -942,19 +1071,22 @@
         requestAnimationFrame(step);
       } else {
         cancelPKAnimation();
-        setTimeout(function() { showResult(anim.isCorrect, pair, pair.compareType); }, 150);
+        setTimeout(function() { showResult(anim.isCorrect, pair, pair.compareType); }, 120);
       }
     }
     requestAnimationFrame(step);
   }
 
   function showResult(isCorrect, pair, prop) {
-    var overlay = $('result-overlay');
-    var winner = pair.a[prop] > pair.b[prop] ? pair.a : pair.b;
-    var loser = pair.a[prop] > pair.b[prop] ? pair.b : pair.a;
-    var ratio = winner[prop] / loser[prop];
+    if (STATE.resultShown) return;
+    STATE.resultShown = true;
 
-    var ratioText;
+    const overlay = $('result-overlay');
+    const winner = pair.a[prop] > pair.b[prop] ? pair.a : pair.b;
+    const loser = pair.a[prop] > pair.b[prop] ? pair.b : pair.a;
+    const ratio = winner[prop] / loser[prop];
+
+    let ratioText;
     if (ratio > 1000) {
       ratioText = ratio.toExponential(1) + ' 倍';
     } else if (ratio > 10) {
@@ -963,7 +1095,7 @@
       ratioText = ratio.toFixed(1) + ' 倍';
     }
 
-    var propText = prop === 'radius' ? '半径' : '质量';
+    const propText = prop === 'radius' ? '半径' : '质量';
 
     $('result-text').textContent = isCorrect ? '\u7b54\u5bf9\u4e86\uff01' : '\u7b54\u9519\u4e86';
     $('result-text').className = 'result-text ' + (isCorrect ? 'correct' : 'wrong');
@@ -976,26 +1108,48 @@
 
     drawResultComparison(winner, loser);
     overlay.classList.add('show');
+
+    // 自动下一题倒计时
+    let secondsLeft = 2;
+    const hintEl = $('result-auto-hint');
+    hintEl.textContent = secondsLeft + '秒后自动下一题';
+
+    const countdown = setInterval(function() {
+      secondsLeft--;
+      if (secondsLeft > 0) {
+        hintEl.textContent = secondsLeft + '秒后自动下一题';
+      } else {
+        clearInterval(countdown);
+        hintEl.textContent = '即将下一题...';
+      }
+    }, 1000);
+
+    STATE.autoNextTimer = setTimeout(function() {
+      clearInterval(countdown);
+      if (STATE.mode === 'pk') {
+        nextRound();
+      }
+    }, 2200);
   }
 
   function drawResultComparison(winner, loser) {
-    var canvas = $('result-comparison-canvas');
-    var dpr = window.devicePixelRatio || 1;
-    var w = Math.min(320, window.innerWidth - 40);
-    var h = 130;
+    const canvas = $('result-comparison-canvas');
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.min(320, window.innerWidth - 40);
+    const h = 130;
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
-    var ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
 
-    var maxR = Math.max(winner.radius, loser.radius);
-    var maxPx = 48;
-    var rWinner = getRenderRadius(winner.radius, maxR, maxPx);
-    var rLoser = getRenderRadius(loser.radius, maxR, maxPx);
+    const maxR = Math.max(winner.radius, loser.radius);
+    const maxPx = 48;
+    const rWinner = getRenderRadius(winner.radius, maxR, maxPx);
+    const rLoser = getRenderRadius(loser.radius, maxR, maxPx);
 
     drawMiniBody(ctx, w * 0.22, 55, rWinner, winner);
     drawMiniBody(ctx, w * 0.75, 55, rLoser, loser);
@@ -1018,9 +1172,9 @@
   }
 
   function drawMiniBody(ctx, cx, cy, r, body) {
-    var sprite = getSprite(body);
-    var scale = r / SPRITE_R;
-    var drawSize = SPRITE_SIZE * scale;
+    const sprite = getSprite(body);
+    const scale = r / SPRITE_R;
+    const drawSize = SPRITE_SIZE * scale;
     ctx.drawImage(sprite, cx - drawSize / 2, cy - drawSize / 2, drawSize, drawSize);
   }
 
@@ -1029,14 +1183,14 @@
     hideAll();
     $('gameover-screen').style.display = 'flex';
 
-    var accuracy = ((STATE.correctCount / STATE.totalRounds) * 100).toFixed(0);
+    const accuracy = ((STATE.correctCount / STATE.totalRounds) * 100).toFixed(0);
     $('gameover-score').textContent = STATE.score;
     $('gameover-stats').innerHTML =
       '答对 ' + STATE.correctCount + ' / ' + STATE.totalRounds + ' 题<br>' +
       '正确率 ' + accuracy + '%<br>' +
       '最高连击 ' + STATE.maxCombo + ' 连击';
 
-    var title = '继续努力！';
+    let title = '继续努力！';
     if (STATE.correctCount === STATE.totalRounds) title = '宇宙大师！';
     else if (STATE.correctCount >= 12) title = '星空学者！';
     else if (STATE.correctCount >= 8) title = '太空探险家！';
@@ -1045,7 +1199,7 @@
 
   function updateHUD() {
     $('score-value').textContent = STATE.score;
-    var comboEl = $('combo-badge');
+    const comboEl = $('combo-badge');
     if (STATE.combo > 1) {
       comboEl.textContent = STATE.combo + '连击';
       comboEl.style.display = 'inline-block';
@@ -1056,7 +1210,7 @@
   }
 
   // ========== 探索模式 ==========
-  var exploreState = {
+  const exploreState = {
     index: 0,
     sortedData: [],
   };
@@ -1065,38 +1219,39 @@
     STATE.mode = 'explore';
     hideAll();
     $('explore-screen').style.display = 'block';
-    exploreState.sortedData = CELESTIAL_DATA.slice().sort(function(a, b) { return a.radius - b.radius; });
+    exploreState.sortedData = getAllBodies().slice().sort(function(a, b) { return a.radius - b.radius; });
     exploreState.index = Math.floor(exploreState.sortedData.length / 2);
     renderExplore();
     $('explore-scale-hint').textContent = '上下滑动探索宇宙尺度，点击查看详情';
   }
 
   function renderExplore() {
-    var canvas = $('explore-canvas');
-    var dpr = window.devicePixelRatio || 1;
+    const canvas = $('explore-canvas');
+    const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.floor(window.innerWidth * dpr);
     canvas.height = Math.floor(window.innerHeight * dpr);
     canvas.style.width = window.innerWidth + 'px';
     canvas.style.height = window.innerHeight + 'px';
-    var ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
 
-    var w = window.innerWidth;
-    var h = window.innerHeight;
-    var cx = w / 2;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const cx = w / 2;
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
 
-    var data = exploreState.sortedData;
-    var currentData = data[exploreState.index];
+    const data = exploreState.sortedData;
+    const currentData = data[exploreState.index];
+    if (!currentData) return;
 
-    var half = Math.min(w, h) * 0.32;
-    var maxR = getMaxSphereRadius(currentData, half);
-    var renderR = Math.min(getRenderRadius(currentData.radius, data[data.length - 1].radius, half), maxR);
+    const half = Math.min(w, h) * 0.32;
+    const maxR = getMaxSphereRadius(currentData, half);
+    const renderR = Math.min(getRenderRadius(currentData.radius, data[data.length - 1].radius, half), maxR);
 
-    var cy = h / 2;
+    const cy = h / 2;
     drawExploreBody(ctx, cx, cy, renderR, currentData);
 
     ctx.fillStyle = '#fff';
@@ -1112,23 +1267,29 @@
     ctx.font = '14px sans-serif';
     ctx.fillText(formatRadius(currentData.radius), cx, cy + renderR + 88);
 
+    if (currentData.isCustom) {
+      ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('我的星系', cx, cy + renderR + 108);
+    }
+
     if (exploreState.index > 0) {
-      var prev = data[exploreState.index - 1];
+      const prev = data[exploreState.index - 1];
       ctx.fillStyle = 'rgba(160, 180, 220, 0.35)';
       ctx.font = '14px sans-serif';
       ctx.fillText('\u2191 ' + prev.name, cx, 90);
     }
     if (exploreState.index < data.length - 1) {
-      var next = data[exploreState.index + 1];
+      const next = data[exploreState.index + 1];
       ctx.fillStyle = 'rgba(160, 180, 220, 0.35)';
       ctx.font = '14px sans-serif';
       ctx.fillText('\u2193 ' + next.name, cx, h - 150);
     }
 
-    var totalSteps = data.length;
-    var progress = exploreState.index / (totalSteps - 1);
-    var barH = h - 220;
-    var barY = 110;
+    const totalSteps = data.length;
+    const progress = exploreState.index / (totalSteps - 1);
+    const barH = h - 220;
+    const barY = 110;
     ctx.strokeStyle = 'rgba(100, 130, 255, 0.25)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -1143,25 +1304,27 @@
   }
 
   function drawExploreBody(ctx, cx, cy, r, body) {
-    var sprite = getSprite(body);
-    var scale = r / SPRITE_R;
-    var drawSize = SPRITE_SIZE * scale;
+    const sprite = getSprite(body);
+    const scale = r / SPRITE_R;
+    const drawSize = SPRITE_SIZE * scale;
     ctx.drawImage(sprite, cx - drawSize / 2, cy - drawSize / 2, drawSize, drawSize);
   }
 
   function showExploreInfo() {
-    var data = exploreState.sortedData[exploreState.index];
-    var typeMap = {
+    const data = exploreState.sortedData[exploreState.index];
+    if (!data) return;
+    const typeMap = {
       planet: '行星',
       dwarf: '矮行星',
       moon: '卫星',
       star: '恒星',
       galaxy: '星系',
       blackhole: '黑洞',
+      other: '天体',
     };
 
     $('explore-info-name').textContent = data.name;
-    $('explore-info-type').textContent = typeMap[data.category] || '天体';
+    $('explore-info-type').textContent = (data.isCustom ? '我的星系 · ' : '') + (typeMap[data.category] || '天体');
     $('explore-info-desc').textContent = data.desc;
     $('explore-stat-radius').textContent = formatRadius(data.radius);
     $('explore-stat-mass').textContent = formatNum(data.mass);
@@ -1173,9 +1336,9 @@
   }
 
   function initExploreTouch() {
-    var canvas = $('explore-canvas');
-    var startY = 0;
-    var isDragging = false;
+    const canvas = $('explore-canvas');
+    let startY = 0;
+    let isDragging = false;
 
     canvas.addEventListener('touchstart', function(e) {
       startY = e.touches[0].clientY;
@@ -1185,7 +1348,7 @@
 
     canvas.addEventListener('touchmove', function(e) {
       if (!isDragging) return;
-      var dy = e.touches[0].clientY - startY;
+      const dy = e.touches[0].clientY - startY;
       if (Math.abs(dy) > 50) {
         if (dy < 0 && exploreState.index < exploreState.sortedData.length - 1) {
           exploreState.index++;
@@ -1218,30 +1381,244 @@
     });
   }
 
+  // ========== 我的星系 ==========
+  function startCustom() {
+    STATE.mode = 'custom';
+    hideAll();
+    $('custom-screen').style.display = 'block';
+    showCustomList();
+  }
+
+  function showCustomList() {
+    $('custom-list-view').style.display = 'block';
+    $('custom-form-view').style.display = 'none';
+    renderCustomList();
+  }
+
+  function showCustomForm(id) {
+    editingCustomId = id || null;
+    pendingCustomPhoto = null;
+    $('custom-list-view').style.display = 'none';
+    $('custom-form-view').style.display = 'block';
+    $('custom-form-title').textContent = id ? '编辑天体' : '添加天体';
+    $('custom-form').reset();
+    $('custom-photo-preview').style.display = 'none';
+    $('custom-photo-preview').src = '';
+    $('custom-photo-placeholder').style.display = 'block';
+
+    if (id) {
+      const body = CUSTOM_BODIES.find(b => b.id === id);
+      if (body) {
+        $('custom-name').value = body.name;
+        $('custom-name-en').value = body.nameEn || '';
+        $('custom-category').value = body.category;
+        $('custom-radius').value = body.radius;
+        $('custom-mass').value = body.mass;
+        $('custom-color').value = body.color || '#6CF';
+        $('custom-desc').value = body.desc || '';
+        if (body.customImage) {
+          $('custom-photo-preview').src = body.customImage;
+          $('custom-photo-preview').style.display = 'block';
+          $('custom-photo-placeholder').style.display = 'none';
+          pendingCustomPhoto = body.customImage;
+        }
+      }
+    }
+  }
+
+  function renderCustomList() {
+    const listEl = $('custom-list');
+    const emptyEl = $('custom-empty');
+    listEl.innerHTML = '';
+
+    if (CUSTOM_BODIES.length === 0) {
+      emptyEl.classList.add('show');
+      return;
+    }
+    emptyEl.classList.remove('show');
+
+    const typeMap = {
+      planet: '行星',
+      dwarf: '矮行星',
+      moon: '卫星',
+      star: '恒星',
+      galaxy: '星系',
+      blackhole: '黑洞',
+      other: '天体',
+    };
+
+    CUSTOM_BODIES.forEach(body => {
+      const card = document.createElement('div');
+      card.className = 'custom-card';
+
+      const photo = document.createElement(body.customImage ? 'img' : 'div');
+      photo.className = 'custom-card-photo' + (body.customImage ? '' : ' placeholder');
+      if (body.customImage) {
+        photo.src = body.customImage;
+      } else {
+        photo.textContent = '?';
+      }
+
+      const info = document.createElement('div');
+      info.className = 'custom-card-info';
+      info.innerHTML =
+        '<div class="custom-card-name">' + escapeHtml(body.name) + '</div>' +
+        '<div class="custom-card-meta">' + (typeMap[body.category] || '天体') + ' · 半径 ' + formatRadius(body.radius) + '</div>' +
+        '<div class="custom-card-desc">' + escapeHtml(body.desc || '暂无介绍') + '</div>';
+
+      const actions = document.createElement('div');
+      actions.className = 'custom-card-actions';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'custom-card-edit';
+      editBtn.textContent = '编辑';
+      editBtn.addEventListener('click', function() { showCustomForm(body.id); });
+      const delBtn = document.createElement('button');
+      delBtn.className = 'custom-card-delete';
+      delBtn.textContent = '删除';
+      delBtn.addEventListener('click', function() { deleteCustomBody(body.id); });
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+
+      card.appendChild(photo);
+      card.appendChild(info);
+      card.appendChild(actions);
+      listEl.appendChild(card);
+    });
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function handlePhotoSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert('照片太大，请选择小于 2MB 的图片');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      pendingCustomPhoto = evt.target.result;
+      $('custom-photo-preview').src = pendingCustomPhoto;
+      $('custom-photo-preview').style.display = 'block';
+      $('custom-photo-placeholder').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleCustomSubmit(e) {
+    e.preventDefault();
+    const name = $('custom-name').value.trim();
+    const nameEn = $('custom-name-en').value.trim();
+    const category = $('custom-category').value;
+    const radius = parseNumberInput($('custom-radius').value);
+    const mass = parseNumberInput($('custom-mass').value);
+    const color = $('custom-color').value;
+    const desc = $('custom-desc').value.trim();
+
+    if (!name) { alert('请输入名称'); return; }
+    if (radius <= 0) { alert('半径必须大于0'); return; }
+    if (mass <= 0) { alert('质量必须大于0'); return; }
+
+    const isNew = !editingCustomId;
+    const id = editingCustomId || 'custom_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+
+    const body = {
+      id: id,
+      name: name,
+      nameEn: nameEn || name,
+      category: category,
+      radius: radius,
+      mass: mass,
+      color: color,
+      desc: desc,
+      isCustom: true,
+      style: { type: guessStyleType(category) },
+      customImage: pendingCustomPhoto || null,
+    };
+
+    if (isNew) {
+      CUSTOM_BODIES.push(body);
+    } else {
+      const idx = CUSTOM_BODIES.findIndex(b => b.id === editingCustomId);
+      if (idx >= 0) {
+        // 保留旧照片如果没有新照片
+        if (!pendingCustomPhoto && CUSTOM_BODIES[idx].customImage) {
+          body.customImage = CUSTOM_BODIES[idx].customImage;
+        }
+        CUSTOM_BODIES[idx] = body;
+      }
+    }
+
+    saveCustomBodies();
+    invalidateSprite(id);
+    // 预加载自定义图片到缓存
+    if (body.customImage) {
+      const img = new Image();
+      img.onload = function() { imageCache[id] = img; };
+      img.src = body.customImage;
+    }
+
+    showCustomList();
+  }
+
+  function deleteCustomBody(id) {
+    if (!confirm('确定要删除这个天体吗？')) return;
+    CUSTOM_BODIES = CUSTOM_BODIES.filter(b => b.id !== id);
+    saveCustomBodies();
+    invalidateSprite(id);
+    delete imageCache[id];
+    renderCustomList();
+  }
+
+  function initCustomPhotoUpload() {
+    $('custom-photo-box').addEventListener('click', function() {
+      $('custom-photo').click();
+    });
+    $('custom-photo').addEventListener('change', handlePhotoSelect);
+  }
+
   // ========== 初始化 ==========
   function init() {
+    loadCustomBodies();
     initStarfield();
 
     $('btn-pk').addEventListener('click', startPK);
     $('btn-explore').addEventListener('click', startExplore);
+    $('btn-custom').addEventListener('click', startCustom);
 
     $('pk-btn-a').addEventListener('click', function() { answer('a'); });
     $('pk-btn-b').addEventListener('click', function() { answer('b'); });
+    // 移动端 touch 响应更及时
+    $('pk-btn-a').addEventListener('touchstart', function(e) { e.preventDefault(); answer('a'); });
+    $('pk-btn-b').addEventListener('touchstart', function(e) { e.preventDefault(); answer('b'); });
 
-    $('result-next-btn').addEventListener('click', nextRound);
+    $('result-next-btn').addEventListener('click', function() {
+      clearAutoNext();
+      nextRound();
+    });
 
     $('btn-replay').addEventListener('click', startPK);
     $('btn-menu').addEventListener('click', showMenu);
 
     $('btn-back-pk').addEventListener('click', showMenu);
     $('btn-back-explore').addEventListener('click', showMenu);
+    $('btn-back-custom').addEventListener('click', showMenu);
+
+    $('btn-add-custom').addEventListener('click', function() { showCustomForm(null); });
+    $('btn-cancel-custom').addEventListener('click', showCustomList);
+    $('custom-form').addEventListener('submit', handleCustomSubmit);
 
     initExploreTouch();
+    initCustomPhotoUpload();
     $('explore-info-close').addEventListener('click', hideExploreInfo);
 
     window.addEventListener('resize', function() {
-      if (STATE.mode === 'pk' && STATE.currentPair && !STATE.pkAnimation) {
-        var maxR = Math.max(STATE.currentPair.a.radius, STATE.currentPair.b.radius);
+      if (STATE.mode === 'pk' && STATE.currentPair && !STATE.pkAnimation && !$('result-overlay').classList.contains('show')) {
+        const maxR = Math.max(STATE.currentPair.a.radius, STATE.currentPair.b.radius);
         renderBody($('pk-canvas-a'), STATE.currentPair.a, maxR);
         renderBody($('pk-canvas-b'), STATE.currentPair.b, maxR);
       } else if (STATE.mode === 'explore') {
@@ -1251,8 +1628,15 @@
 
     // 预加载图片
     preloadImages(function() {
-      // 清除精灵缓存（如果有）
       Object.keys(spriteCache).forEach(function(k) { delete spriteCache[k]; });
+      // 预加载自定义图片
+      CUSTOM_BODIES.forEach(function(b) {
+        if (b.customImage) {
+          const img = new Image();
+          img.onload = function() { imageCache[b.id] = img; };
+          img.src = b.customImage;
+        }
+      });
     });
 
     showMenu();

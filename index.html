@@ -28,6 +28,10 @@
       <span class="icon">O</span>
       自由探索
     </button>
+    <button class="menu-btn" id="btn-custom">
+      <span class="icon">+</span>
+      我的星系
+    </button>
   </div>
 
   <!-- ===== PK对战 ===== -->
@@ -36,7 +40,7 @@
     <div class="hud-top">
       <button class="btn-back" id="btn-back-pk">← 返回</button>
       <div class="score-box">
-        <div class="score-label" id="round-info">第 1 / 10 题</div>
+        <div class="score-label" id="round-info">第 1 / 15 题</div>
         <div>
           <span class="score-value" id="score-value">0</span>
           <span class="combo-badge" id="combo-badge" style="display:none;">0连击</span>
@@ -77,6 +81,7 @@
       <div class="result-text" id="result-text">答对了！</div>
       <canvas id="result-comparison-canvas"></canvas>
       <div class="result-desc" id="result-desc"></div>
+      <div class="result-auto-hint" id="result-auto-hint">2秒后自动下一题</div>
       <button class="result-next-btn" id="result-next-btn">下一题 →</button>
     </div>
   </div>
@@ -107,6 +112,84 @@
         </div>
       </div>
       <button class="result-next-btn" id="explore-info-close" style="margin-top:12px;width:100%;">关闭</button>
+    </div>
+  </div>
+
+  <!-- ===== 我的星系 ===== -->
+  <div class="custom-screen" id="custom-screen" style="display:none;">
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-custom">← 返回</button>
+      <div class="score-box">
+        <div class="score-label">我的星系</div>
+        <div class="score-value" style="font-size:14px;">创建你的天体</div>
+      </div>
+    </div>
+
+    <!-- 列表视图 -->
+    <div class="custom-list-view" id="custom-list-view">
+      <div class="custom-empty" id="custom-empty">
+        <div class="custom-empty-icon">+</div>
+        <div>还没有自定义天体</div>
+        <div class="custom-empty-sub">点击下方按钮添加你自己的星球、卫星或星系</div>
+      </div>
+      <div class="custom-list" id="custom-list"></div>
+      <button class="custom-add-btn" id="btn-add-custom">添加天体 +</button>
+    </div>
+
+    <!-- 表单视图 -->
+    <div class="custom-form-view" id="custom-form-view" style="display:none;">
+      <div class="custom-form-title" id="custom-form-title">添加天体</div>
+      <form class="custom-form" id="custom-form">
+        <label class="custom-field">
+          <span>名称 *</span>
+          <input type="text" id="custom-name" placeholder="例如：我的星球" required>
+        </label>
+        <label class="custom-field">
+          <span>英文名称</span>
+          <input type="text" id="custom-name-en" placeholder="例如：My Planet">
+        </label>
+        <label class="custom-field">
+          <span>类型 *</span>
+          <select id="custom-category" required>
+            <option value="planet">行星</option>
+            <option value="moon">卫星</option>
+            <option value="star">恒星</option>
+            <option value="galaxy">星系</option>
+            <option value="blackhole">黑洞</option>
+            <option value="dwarf">矮行星</option>
+            <option value="other">其他天体</option>
+          </select>
+        </label>
+        <label class="custom-field">
+          <span>半径 (km) *</span>
+          <input type="number" id="custom-radius" placeholder="例如：6371" step="any" required>
+        </label>
+        <label class="custom-field">
+          <span>质量 (kg) *</span>
+          <input type="number" id="custom-mass" placeholder="例如：5.972e24" step="any" required>
+        </label>
+        <label class="custom-field">
+          <span>颜色</span>
+          <input type="color" id="custom-color" value="#6CF">
+        </label>
+        <label class="custom-field">
+          <span>介绍</span>
+          <textarea id="custom-desc" rows="3" placeholder="写一段关于这个天体的介绍..."></textarea>
+        </label>
+        <label class="custom-field custom-photo-field">
+          <span>照片</span>
+          <div class="custom-photo-box" id="custom-photo-box">
+            <div class="custom-photo-placeholder">点击上传照片</div>
+            <img id="custom-photo-preview" style="display:none;">
+          </div>
+          <input type="file" id="custom-photo" accept="image/*" style="display:none;">
+          <div class="custom-photo-hint">支持 jpg / png，建议小于 500KB</div>
+        </label>
+        <div class="custom-form-actions">
+          <button type="button" class="custom-btn-secondary" id="btn-cancel-custom">取消</button>
+          <button type="submit" class="custom-btn-primary" id="btn-save-custom">保存</button>
+        </div>
+      </form>
     </div>
   </div>
 

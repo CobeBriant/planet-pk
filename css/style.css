@@ -94,7 +94,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: 16px;
 }
 
 .menu-title {
@@ -270,14 +270,14 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   padding: 60px 16px calc(20px + env(safe-area-inset-bottom, 0px));
-  background: rgba(0, 0, 0, 0.82);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   pointer-events: none;
   opacity: 0;
-  transform: scale(0.95);
+  transform: scale(0.96);
   transition: opacity 0.25s, transform 0.25s;
   overflow-y: auto;
 }
@@ -305,6 +305,12 @@ html, body {
   padding: 0 12px;
 }
 
+.result-auto-hint {
+  font-size: 12px;
+  color: rgba(160, 180, 220, 0.6);
+  margin-top: -4px;
+}
+
 #result-comparison-canvas {
   display: block;
   max-width: 100%;
@@ -319,7 +325,7 @@ html, body {
 }
 
 .result-next-btn {
-  margin-top: 16px;
+  margin-top: 8px;
   padding: 14px 40px;
   border: 1px solid rgba(100, 130, 255, 0.4);
   border-radius: 16px;
@@ -450,6 +456,296 @@ html, body {
   z-index: 5;
   pointer-events: none;
 }
+
+/* ===== 我的星系 ===== */
+.custom-screen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 20;
+}
+
+.custom-list-view {
+  position: absolute;
+  top: 70px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 70px);
+  padding: 16px;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+}
+
+.custom-empty {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60%;
+  color: rgba(160, 180, 220, 0.7);
+  font-size: 16px;
+  text-align: center;
+}
+
+.custom-empty.show { display: flex; }
+
+.custom-empty-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(100, 130, 255, 0.15);
+  border: 1px solid rgba(100, 130, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: #6CF;
+  margin-bottom: 16px;
+}
+
+.custom-empty-sub {
+  font-size: 13px;
+  color: rgba(160, 180, 220, 0.5);
+  margin-top: 8px;
+}
+
+.custom-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.custom-card {
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(100, 130, 255, 0.25);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.custom-card-photo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(30, 30, 60, 0.8);
+  border: 1px solid rgba(100, 130, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.custom-card-photo.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: rgba(160, 180, 220, 0.5);
+}
+
+.custom-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-card-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.custom-card-meta {
+  font-size: 12px;
+  color: rgba(160, 180, 220, 0.7);
+  margin-bottom: 6px;
+}
+
+.custom-card-desc {
+  font-size: 13px;
+  color: rgba(200, 220, 255, 0.75);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.custom-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.custom-card-actions button {
+  width: 52px;
+  padding: 6px 0;
+  border-radius: 8px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.custom-card-edit {
+  background: rgba(100, 130, 255, 0.25);
+  color: #8AAFFF;
+}
+
+.custom-card-delete {
+  background: rgba(220, 60, 60, 0.25);
+  color: #FF8888;
+}
+
+.custom-add-btn {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 320px;
+  padding: 16px 0;
+  border: 1px solid rgba(100, 130, 255, 0.5);
+  border-radius: 16px;
+  background: rgba(30, 30, 60, 0.95);
+  color: #6CF;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.custom-add-btn:active { transform: translateX(-50%) scale(0.97); }
+
+.custom-form-view {
+  position: absolute;
+  top: 70px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 70px);
+  padding: 16px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+}
+
+.custom-form-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #6CF;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.custom-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-field span {
+  font-size: 14px;
+  color: rgba(180, 200, 240, 0.9);
+  font-weight: 600;
+}
+
+.custom-field input,
+.custom-field select,
+.custom-field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(100, 130, 255, 0.3);
+  background: rgba(20, 20, 40, 0.8);
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+}
+
+.custom-field input:focus,
+.custom-field select:focus,
+.custom-field textarea:focus {
+  border-color: rgba(100, 180, 255, 0.6);
+}
+
+.custom-field input[type="color"] {
+  padding: 4px;
+  height: 44px;
+}
+
+.custom-field textarea {
+  resize: none;
+}
+
+.custom-photo-box {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px dashed rgba(100, 130, 255, 0.4);
+  background: rgba(20, 20, 40, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  margin: 4px 0;
+}
+
+.custom-photo-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.custom-photo-placeholder {
+  color: rgba(160, 180, 220, 0.6);
+  font-size: 13px;
+  text-align: center;
+  padding: 8px;
+}
+
+.custom-photo-hint {
+  font-size: 12px;
+  color: rgba(160, 180, 220, 0.5);
+}
+
+.custom-form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.custom-btn-primary,
+.custom-btn-secondary {
+  flex: 1;
+  padding: 14px 0;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+}
+
+.custom-btn-primary {
+  background: rgba(80, 130, 255, 0.85);
+  color: #fff;
+}
+
+.custom-btn-secondary {
+  background: rgba(40, 40, 70, 0.85);
+  color: rgba(180, 200, 240, 0.9);
+  border: 1px solid rgba(100, 130, 255, 0.3);
+}
+
+.custom-btn-primary:active,
+.custom-btn-secondary:active { transform: scale(0.97); }
 
 /* ===== 动画 ===== */
 @keyframes popIn {
