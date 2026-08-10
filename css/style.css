@@ -825,6 +825,27 @@ html, body {
   text-align: right;
 }
 
+/* 音效开关按钮 */
+.arcade-mute {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(120, 220, 255, 0.16);
+  color: #cdefff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.arcade-mute:active { transform: scale(0.9); background: rgba(120, 220, 255, 0.32); }
+
 /* 顶部压迫区提示条 */
 .arcade-pressure {
   height: 26px;

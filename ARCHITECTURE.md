@@ -231,10 +231,11 @@ window.ArcadeGame = (function() {
 - 碰撞：能量球(圆) vs 星球(圆) 用距离判定；能量球(圆) vs 挡板(AABB) 用最近点法
 - 特效：命中触发粒子爆炸(`burst`)、光晕脉冲(planet.flash 径向渐变)、震屏(`shake` 平移画布)、危险红光(`arcade-danger` 透明度随 `danger`)
 - 动态背景：星尘向下流动 + 深空渐变
+- **音效（V5.1 新增）**：`Sfx` 模块用 Web Audio API 实时合成，**不依赖任何音频文件**，在 Android WebView 中可直接播放。涵盖 `hit`(命中)/`destroy`(粉碎爆炸)/`paddle`(挡板反弹)/`lifeLost`(失命)/`levelUp`(过关)/`gameOver`/`start`。移动端自动播放策略要求用户手势后解锁，故在 `pointerdown` 和 `start()` 中调用 `Sfx.unlock()`；HUD 右上角有 🔊/🔇 静音开关（`arcade-mute`）。
 
 **屏幕布局（竖屏，基准 S23 Ultra 19.3:9）：**
 ```
-顶部 HUD(关卡/分数/生命) → 顶部压迫提示条 → 战场(canvas 撑满) → 底部控制提示
+顶部 HUD(关卡/分数/生命/静音开关) → 顶部压迫提示条 → 战场(canvas 撑满) → 底部控制提示
 ```
 
 ## 构建流程
@@ -295,15 +296,15 @@ python3 -m http.server 8080
 | 改游戏碰撞逻辑 | `js/arcade.js` → `ballHitsPlanet()` / `ballHitsPaddle()` |
 | 改游戏特效参数 | `js/arcade.js` → `burst()` / `addShake()` / `updateDangerVisual()` |
 | 改游戏布局 | `index.html` 的 `#arcade-screen` + `css/style.css` 的 `.arcade-*` |
+| 改/加游戏音效 | `js/arcade.js` → `Sfx` 模块（`hit`/`destroy`/`paddle`/`lifeLost`/`levelUp`/`gameOver`/`start`，全用 Web Audio 合成，无音频文件） |
 
 ## 已知限制
 
 1. 自定义天体照片存 localStorage（base64），大图会导致存储溢出，建议 < 500KB
 2. 矮行星/部分恒星/星系无真实纹理，用程序化绘制
-3. 无音效
-4. 探索模式未完全升级到 V4 天体数据
-5. debug APK 未签名（不能上架应用商店）
-6. 游戏 Tab 为 V5 原型：单球基础玩法，关卡/生命/特效已实现，尚未做音效、道具、Boss、排行榜
+3. 探索模式未完全升级到 V4 天体数据
+4. debug APK 未签名（不能上架应用商店）
+5. 游戏 Tab 为 V5 原型：单球基础玩法，关卡/生命/特效已实现；V5.1 已加合成音效，但尚缺背景音乐、道具、Boss、排行榜
 
 ## 版本历史
 
@@ -314,5 +315,6 @@ python3 -m http.server 8080
 | V3.0 | 11 张真实纹理，ImageManager 异步加载，粒子特效 |
 | V4.0 | 修复 PK 答题卡死 bug，新增「我的星系」自定义天体功能 |
 | V5.0 | 新增第 4 个 Tab「游戏」：弹球击退星球原型（Canvas 2D + rAF + 粒子/震屏/危险预警） |
+| V5.1 | 游戏 Tab 新增音效（Web Audio 实时合成，无音频文件）+ 静音开关 |
 
 详见 `docs/迭代记录.md`。

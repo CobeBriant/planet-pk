@@ -63,6 +63,76 @@ window.ArcadeGame = (function () {
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
   function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 
+  // ============ 音效（Web Audio 合成，无需音频文件） ============
+  // 移动端需在用户手势后解锁 AudioContext，故首次输入时调用 unlock()
+  const Sfx = (function () {
+    let actx = null;
+    let muted = false;
+    function ensure() {
+      if (!actx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        try { actx = new AC(); } catch (e) { return null; }
+      }
+      if (actx.state === 'suspended') actx.resume();
+      return actx;
+    }
+    function tone(opt) {
+      const a = ensure(); if (!a || muted) return;
+      const t0 = a.currentTime;
+      const dur = opt.dur ?? 0.15;
+      const vol = opt.vol ?? 0.2;
+      const osc = a.createOscillator();
+      const gain = a.createGain();
+      osc.type = opt.type || 'sine';
+      osc.frequency.setValueAtTime(opt.freq || 440, t0);
+      if (opt.freqEnd) osc.frequency.exponentialRampToValueAtTime(Math.max(1, opt.freqEnd), t0 + dur);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(vol, t0 + (opt.attack ?? 0.005));
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain).connect(a.destination);
+      osc.start(t0); osc.stop(t0 + dur + 0.02);
+    }
+    function noise(opt) {
+      const a = ensure(); if (!a || muted) return;
+      const t0 = a.currentTime;
+      const dur = opt.dur ?? 0.2;
+      const vol = opt.vol ?? 0.3;
+      const len = Math.floor(a.sampleRate * dur);
+      const buf = a.createBuffer(1, len, a.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = a.createBufferSource(); src.buffer = buf;
+      const filt = a.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = opt.filterFreq || 1200;
+      const gain = a.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(filt).connect(gain).connect(a.destination);
+      src.start(t0); src.stop(t0 + dur);
+    }
+    return {
+      unlock() { ensure(); },
+      hit() { tone({ freq: 540, freqEnd: 300, type: 'square', dur: 0.08, vol: 0.10 }); },
+      destroy() {
+        noise({ dur: 0.26, vol: 0.32, filterFreq: 1800 });
+        tone({ freq: 200, freqEnd: 60, type: 'sawtooth', dur: 0.26, vol: 0.16 });
+      },
+      paddle() { tone({ freq: 300, freqEnd: 540, type: 'sine', dur: 0.07, vol: 0.12 }); },
+      lifeLost() { tone({ freq: 220, freqEnd: 70, type: 'sawtooth', dur: 0.42, vol: 0.22 }); },
+      levelUp() {
+        [523, 659, 784, 1046].forEach((f, i) =>
+          setTimeout(() => tone({ freq: f, type: 'triangle', dur: 0.12, vol: 0.15 }), i * 70));
+      },
+      gameOver() {
+        [440, 350, 260, 180].forEach((f, i) =>
+          setTimeout(() => tone({ freq: f, type: 'sawtooth', dur: 0.3, vol: 0.2 }), i * 120));
+      },
+      start() { tone({ freq: 330, freqEnd: 660, type: 'triangle', dur: 0.2, vol: 0.16 }); },
+      toggleMute() { muted = !muted; return muted; },
+      isMuted() { return muted; },
+    };
+  })();
+
   // ============ 初始化 / 尺寸 ============
   function init() {
     canvas = $('arcade-canvas');
@@ -76,6 +146,16 @@ window.ArcadeGame = (function () {
     elOverTitle = $('arcade-over-title');
     elOverScore = $('arcade-over-score');
     elOverStats = $('arcade-over-stats');
+
+    const muteBtn = $('arcade-mute');
+    if (muteBtn) {
+      muteBtn.textContent = Sfx.isMuted() ? '🔇' : '🔊';
+      muteBtn.addEventListener('click', () => {
+        const m = Sfx.toggleMute();
+        muteBtn.textContent = m ? '🔇' : '🔊';
+        if (!m) { Sfx.unlock(); Sfx.paddle(); } // 取消静音时给个反馈音
+      });
+    }
 
     initBackground();
     bindInput();
@@ -128,7 +208,7 @@ window.ArcadeGame = (function () {
       const x = clientX - rect.left;
       paddle.x = clamp(x, paddle.w / 2, W - paddle.w / 2);
     }
-    canvas.addEventListener('pointerdown', e => { moveTo(e.clientX); });
+    canvas.addEventListener('pointerdown', e => { Sfx.unlock(); moveTo(e.clientX); });
     canvas.addEventListener('pointermove', e => {
       if (e.pressure > 0 || e.buttons > 0 || e.pointerType === 'touch') moveTo(e.clientX);
     });
@@ -234,10 +314,12 @@ window.ArcadeGame = (function () {
       burst(p.x, p.y, p.color, 36, 1.3);
       score += 100 * level;
       addShake(7);
+      Sfx.destroy();
       planets.splice(planets.indexOf(p), 1);
     } else {
       burst(b.x, b.y, p.color, 10, 0.7);
       addShake(3);
+      Sfx.hit();
     }
     updateHud();
     return true;
@@ -259,6 +341,7 @@ window.ArcadeGame = (function () {
     b.vx = Math.cos(ang) * speed;
     b.vy = Math.sin(ang) * speed;
     p_flashPaddle();
+    Sfx.paddle();
     return true;
   }
   let paddleFlash = 0;
@@ -273,6 +356,7 @@ window.ArcadeGame = (function () {
     if (levelTimer >= 30) {
       levelTimer = 0; level += 1;
       toast('第 ' + level + ' 关！压力增强');
+      Sfx.levelUp();
       updateHud();
     }
 
@@ -361,6 +445,7 @@ window.ArcadeGame = (function () {
     flashWarning = 1;
     addShake(10);
     burst(W / 2, H - 30, '#ff3b5c', 24, 1.1);
+    Sfx.lifeLost();
     updateHud();
     if (lives <= 0) {
       gameOver();
@@ -564,6 +649,8 @@ window.ArcadeGame = (function () {
   // ============ 生命周期 ============
   function start() {
     if (!canvas) init();
+    Sfx.unlock();
+    Sfx.start();
     // 屏幕已可见，重置尺寸
     resize();
     score = 0; lives = 3; level = 1; elapsed = 0;
@@ -595,6 +682,7 @@ window.ArcadeGame = (function () {
     state = 'over';
     running = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    Sfx.gameOver();
     elOverTitle.textContent = '游戏结束';
     elOverScore.textContent = score;
     elOverStats.innerHTML = '坚持到第 <b>' + level + '</b> 关 · 击退星球累计得分';
