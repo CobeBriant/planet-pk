@@ -910,10 +910,12 @@
     $('pk-screen').style.display = 'none';
     $('explore-screen').style.display = 'none';
     $('custom-screen').style.display = 'none';
+    $('arcade-screen').style.display = 'none';
     $('gameover-screen').style.display = 'none';
     $('result-overlay').classList.remove('show');
     clearAutoNext();
     cancelPKAnimation();
+    if (window.ArcadeGame) window.ArcadeGame.stop();
   }
 
   function cancelPKAnimation() {
@@ -1389,6 +1391,14 @@
     showCustomList();
   }
 
+  // ========== 游戏 Tab（弹球击退星球） ==========
+  function startArcade() {
+    STATE.mode = 'arcade';
+    hideAll();
+    $('arcade-screen').style.display = 'flex';
+    if (window.ArcadeGame) window.ArcadeGame.start();
+  }
+
   function showCustomList() {
     $('custom-list-view').style.display = 'block';
     $('custom-form-view').style.display = 'none';
@@ -1589,6 +1599,7 @@
     $('btn-pk').addEventListener('click', startPK);
     $('btn-explore').addEventListener('click', startExplore);
     $('btn-custom').addEventListener('click', startCustom);
+    $('btn-arcade').addEventListener('click', startArcade);
 
     $('pk-btn-a').addEventListener('click', function() { answer('a'); });
     $('pk-btn-b').addEventListener('click', function() { answer('b'); });
@@ -1607,6 +1618,11 @@
     $('btn-back-pk').addEventListener('click', showMenu);
     $('btn-back-explore').addEventListener('click', showMenu);
     $('btn-back-custom').addEventListener('click', showMenu);
+    $('btn-back-arcade').addEventListener('click', showMenu);
+
+    // 游戏 Tab 内结算面板
+    $('arcade-replay').addEventListener('click', startArcade);
+    $('arcade-menu').addEventListener('click', showMenu);
 
     $('btn-add-custom').addEventListener('click', function() { showCustomForm(null); });
     $('btn-cancel-custom').addEventListener('click', showCustomList);

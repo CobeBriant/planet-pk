@@ -30,10 +30,11 @@ HTML5 Canvas 天体大小对比小游戏，用 Capacitor 打包成 Android APK�
 
 ```
 planet-pk/
-├── index.html              # ★ 主页面 — 4 个屏幕的 HTML 结构
+├── index.html              # ★ 主页面 — 5 个屏幕的 HTML 结构（菜单/PK/探索/我的星系/游戏）
 ├── css/style.css           # ★ 全部样式 — 响应式 + 动画
 ├── js/data.js              # ★ 天体数据库 — 45+ 个天体的真实天文数据
-├── js/game.js              # ★ 核心游戏引擎 — 渲染/PK逻辑/探索/自定义天体
+├── js/game.js              # ★ 核心引擎 — 菜单切换/PK逻辑/探索/自定义天体/游戏入口
+├── js/arcade.js            # ★ 游戏 Tab — 弹球击退星球（独立模块，挂 window.ArcadeGame）
 ├── assets/images/          # 11 张真实天体纹理 (2K jpg/png)
 ├── www/                    # Capacitor 同步目录（index.html + css/ + js/ + assets/ 的副本）
 ├── android/                # Capacitor Android 工程
@@ -194,6 +195,48 @@ const CELESTIAL_DATA = [
 - 粒子效果用 JS Canvas 绘制（不是 CSS）
 - 按钮同时绑 `click` + `touchend` 消除移动端 300ms 延迟
 
+### 5. `js/arcade.js` — 游戏 Tab（弹球击退星球）
+
+> 这是第 4 个 Tab「游戏」。与 PK/探索/我的星系解耦，作为独立模块挂在 `window.ArcadeGame` 上，由 `game.js` 的 `startArcade()` 调用 `start()`，返回菜单时 `hideAll()` 调用 `stop()`。
+
+**玩法：** 顶部不断生成并下压「星球」障碍物；底部由玩家滑动控制的「球网/挡板」；能量球在边界与挡板间反弹，击中上方星球将其击退/粉碎。星球速度、密度、血量随关卡（每 30 秒）递增。
+
+**代码结构（IIFE 返回 `{ init, start, stop }`）：**
+
+```
+window.ArcadeGame = (function() {
+  // 画布/尺寸: canvas, ctx, dpr(DPR自适应, 高刷屏上限2.25), W/H
+  // 实体: paddle(挡板), balls[](能量球), planets[](下压星球), particles[](粒子), bgStars[](动态星尘)
+  // 状态: state(idle/playing/over), score, lives, level, elapsed
+  //      shake(震屏), danger(危险强度0..1), flashWarning(失命强闪)
+  // 难度: BASE + difficulty() 按 level 计算 ballSpeed/planetSpeed/spawnInterval/planetHP
+  // 函数:
+  //   init()        首次绑定 DOM + 输入
+  //   resize()      DPR 缩放 + 挡板尺寸（canvas 可见后调用）
+  //   bindInput()   pointerdown/move 滑动控制挡板 + 方向键调试 + touchmove preventDefault
+  //   spawnPlanet()/spawnBall()   生成实体
+  //   burst()/addShake()/toast()   粒子/震屏/浮层
+  //   ballHitsPlanet()  圆-圆碰撞: 反弹 + 给星球向上冲量 + 扣血 + 粉碎
+  //   ballHitsPaddle()  圆-AABB最近点: 反弹 + 由击打点决定反弹倾角
+  //   update(dt)    物理步进（dt 来自 rAF，兼容 60/120fps）
+  //   render()      绘制: 震屏偏移 → 背景 → 压迫带 → 星球/球/挡板/粒子
+  //   loop(t)       requestAnimationFrame 主循环
+  //   start()/stop()/gameOver()
+})();
+```
+
+**关键实现点：**
+- 渲染用 Canvas 2D；`ctx.setTransform(dpr,...)` 做高分屏适配
+- 主循环 `dt = (t - lastT)/1000`，`Math.min(dt, 0.05)` 防卡顿跳变 → 物理与帧率解耦，60/120fps 行为一致
+- 碰撞：能量球(圆) vs 星球(圆) 用距离判定；能量球(圆) vs 挡板(AABB) 用最近点法
+- 特效：命中触发粒子爆炸(`burst`)、光晕脉冲(planet.flash 径向渐变)、震屏(`shake` 平移画布)、危险红光(`arcade-danger` 透明度随 `danger`)
+- 动态背景：星尘向下流动 + 深空渐变
+
+**屏幕布局（竖屏，基准 S23 Ultra 19.3:9）：**
+```
+顶部 HUD(关卡/分数/生命) → 顶部压迫提示条 → 战场(canvas 撑满) → 底部控制提示
+```
+
 ## 构建流程
 
 ### 前置环境（已安装在用户机器上）
@@ -247,6 +290,11 @@ python3 -m http.server 8080
 | 修改颜色主题 | `css/style.css` → 顶部的 :root 变量 |
 | 修改 APK 名称/包名 | `capacitor.config.json` → appName/appId |
 | 自定义天体持久化 | localStorage key: `planet_pk_custom_bodies` |
+| 改游戏难度/速度 | `js/arcade.js` → `BASE` 常量 + `difficulty()` |
+| 改星球外观/名字 | `js/arcade.js` → `PALETTE` / `NAMES` |
+| 改游戏碰撞逻辑 | `js/arcade.js` → `ballHitsPlanet()` / `ballHitsPaddle()` |
+| 改游戏特效参数 | `js/arcade.js` → `burst()` / `addShake()` / `updateDangerVisual()` |
+| 改游戏布局 | `index.html` 的 `#arcade-screen` + `css/style.css` 的 `.arcade-*` |
 
 ## 已知限制
 
@@ -255,6 +303,7 @@ python3 -m http.server 8080
 3. 无音效
 4. 探索模式未完全升级到 V4 天体数据
 5. debug APK 未签名（不能上架应用商店）
+6. 游戏 Tab 为 V5 原型：单球基础玩法，关卡/生命/特效已实现，尚未做音效、道具、Boss、排行榜
 
 ## 版本历史
 
@@ -264,5 +313,6 @@ python3 -m http.server 8080
 | V2.0 | 45+ 天体，15 题，PK 胜负动画 |
 | V3.0 | 11 张真实纹理，ImageManager 异步加载，粒子特效 |
 | V4.0 | 修复 PK 答题卡死 bug，新增「我的星系」自定义天体功能 |
+| V5.0 | 新增第 4 个 Tab「游戏」：弹球击退星球原型（Canvas 2D + rAF + 粒子/震屏/危险预警） |
 
 详见 `docs/迭代记录.md`。

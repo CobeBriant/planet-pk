@@ -32,6 +32,10 @@
       <span class="icon">+</span>
       我的星系
     </button>
+    <button class="menu-btn" id="btn-arcade">
+      <span class="icon">▶</span>
+      游戏
+    </button>
   </div>
 
   <!-- ===== PK对战 ===== -->
@@ -193,6 +197,49 @@
     </div>
   </div>
 
+  <!-- ===== 游戏 Tab（弹球击退星球） ===== -->
+  <div class="arcade-screen" id="arcade-screen" style="display:none;">
+    <!-- 顶部 HUD -->
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-arcade">← 返回</button>
+      <div class="score-box">
+        <div class="score-label">第 <span id="arcade-level">1</span> 关</div>
+        <div>
+          <span class="score-value" id="arcade-score">0</span>
+        </div>
+      </div>
+      <div class="arcade-lives" id="arcade-lives">♥♥♥</div>
+    </div>
+
+    <!-- 顶部敌方压迫区（视觉提示条） -->
+    <div class="arcade-pressure" id="arcade-pressure">
+      <div class="arcade-pressure-label">⚠ 星球下压区</div>
+    </div>
+
+    <!-- 中部弹球与碰撞战场 -->
+    <div class="arcade-arena-wrap">
+      <canvas id="arcade-canvas"></canvas>
+      <!-- 危险预警红光 -->
+      <div class="arcade-danger" id="arcade-danger"></div>
+      <!-- 关卡/提示浮层 -->
+      <div class="arcade-toast" id="arcade-toast"></div>
+    </div>
+
+    <!-- 底部控制提示 -->
+    <div class="arcade-foot">滑动屏幕控制底部球网，弹球击退下压的星球</div>
+
+    <!-- 游戏内结算面板 -->
+    <div class="arcade-over" id="arcade-over" style="display:none;">
+      <div class="arcade-over-title" id="arcade-over-title">游戏结束</div>
+      <div class="arcade-over-score" id="arcade-over-score">0</div>
+      <div class="arcade-over-stats" id="arcade-over-stats"></div>
+      <div style="display:flex;gap:12px;margin-top:12px;">
+        <button class="menu-btn" id="arcade-replay" style="width:140px;font-size:16px;">再来一局</button>
+        <button class="menu-btn" id="arcade-menu" style="width:140px;font-size:16px;">主菜单</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== 游戏结束 ===== -->
   <div class="gameover-screen" id="gameover-screen" style="display:none;">
     <div class="gameover-title" id="gameover-title">游戏结束</div>
@@ -207,6 +254,7 @@
 </div>
 
 <script src="js/data.js"></script>
+<script src="js/arcade.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

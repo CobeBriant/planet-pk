@@ -804,3 +804,129 @@ html, body {
 .pk-side.loser { animation: pkLose 0.7s ease-out forwards; }
 
 #pk-screen.shake { animation: shake 0.35s; }
+
+/* ===== 游戏 Tab（弹球击退星球） ===== */
+.arcade-screen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: #05010f;
+  overflow: hidden;
+}
+
+.arcade-lives {
+  font-size: 18px;
+  color: #ff6b8a;
+  letter-spacing: 2px;
+  min-width: 64px;
+  text-align: right;
+}
+
+/* 顶部压迫区提示条 */
+.arcade-pressure {
+  height: 26px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(255,60,90,0.22), rgba(255,60,90,0));
+  border-bottom: 1px solid rgba(255,80,110,0.18);
+}
+.arcade-pressure-label {
+  font-size: 12px;
+  color: rgba(255,140,160,0.85);
+  letter-spacing: 1px;
+}
+
+/* 战场 */
+.arcade-arena-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#arcade-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* 危险预警红光（覆盖在战场边缘） */
+.arcade-danger {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: inset 0 0 30px rgba(255,40,70,0.4);
+  transition: opacity 0.15s linear;
+  z-index: 5;
+}
+
+/* 关卡/提示浮层 */
+.arcade-toast {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  padding: 10px 22px;
+  background: rgba(10, 20, 50, 0.85);
+  border: 1px solid rgba(120, 220, 255, 0.4);
+  border-radius: 14px;
+  color: #aef3ff;
+  font-size: 18px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 6;
+}
+.arcade-toast.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* 底部控制提示 */
+.arcade-foot {
+  flex: 0 0 auto;
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(150, 180, 230, 0.55);
+  background: rgba(8, 6, 22, 0.9);
+}
+
+/* 游戏内结算面板 */
+.arcade-over {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.88);
+}
+.arcade-over-title {
+  font-size: 30px;
+  font-weight: 800;
+  color: #FF6;
+}
+.arcade-over-score {
+  font-size: 52px;
+  font-weight: 900;
+  color: #6CF;
+}
+.arcade-over-stats {
+  color: rgba(180, 200, 240, 0.75);
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.8;
+}
+.arcade-over-stats b { color: #aef3ff; }
+
