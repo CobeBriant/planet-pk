@@ -1,61 +1,62 @@
 /**
- * 星球PK — 游戏 Tab（弹球击退星球）V5
+ * 星球PK — 游戏 Tab（太空射击）V6.0
  *
- * 玩法原型：
- *  - 顶部不断生成并下压「星球」障碍物，速度/密度随关卡提升
- *  - 底部由玩家滑动控制的「球网/挡板」
- *  - 能量球在边界与挡板间反弹，击中上方星球时击退/粉碎
- *  - 命中特效：粒子爆炸 + 光晕脉冲 + 震屏
- *  - 危险预警：星球逼近底部时屏幕边缘红光闪烁
- *  - 动态深空背景：星尘流动 + 霓虹光
+ * 玩法（经典街机太空射击）：
+ *  - 玩家控制一架「星际战机」，触摸/滑动可在屏幕内自由飞行（前后左右）
+ *  - 战机自动向上发射能量弹
+ *  - 真实天体（来自 data.js CELESTIAL_DATA）从屏幕顶部不断落下
+ *  - 射击击碎天体得分；被天体撞到或让天体穿过底部则扣命
+ *  - 随时间推移，天体下落速度和密度递增（每 30 秒一关）
  *
- * 渲染：Canvas 2D，DPR 自适应，requestAnimationFrame + delta time（兼容 60/120fps）
- * 碰撞：能量球(圆) vs 星球(圆) 圆-圆；能量球(圆) vs 挡板(AABB) 最近点
+ * 数据源：
+ *  - 天体从 CELESTIAL_DATA（data.js）随机选取，使用真实名称/颜色/图片
+ *  - 图片复用 game.js 的 window.PKImageCache（已预加载的纹理）
  *
- * 对外暴露 window.ArcadeGame：start() / stop()
+ * 渲染：Canvas 2D，DPR 自适应，requestAnimationFrame + delta time
+ * 碰撞：子弹(圆) vs 天体(圆) 圆-圆；战机(圆) vs 天体(圆) 圆-圆
+ *
+ * 对外暴露 window.ArcadeGame：init() / start() / stop()
  */
 window.ArcadeGame = (function () {
   'use strict';
 
   // ---------- 画布与尺寸 ----------
   let canvas, ctx, dpr = 1;
-  let W = 0, H = 0;          // CSS 像素逻辑尺寸
+  let W = 0, H = 0;
   let rafId = null;
   let lastT = 0;
   let running = false;
 
   // ---------- 实体 ----------
-  let paddle = null;
-  let balls = [];
-  let planets = [];
-  let particles = [];
-  let bgStars = [];
+  let ship = null;        // 玩家战机
+  let bullets = [];       // 子弹
+  let planets = [];       // 下落的天体
+  let particles = [];     // 粒子特效
+  let bgStars = [];       // 背景星空
 
   // ---------- 状态 ----------
-  let state = 'idle';        // idle | playing | over
+  let state = 'idle';          // idle | playing | over
   let score = 0, lives = 3, level = 1, elapsed = 0;
   let spawnTimer = 0, levelTimer = 0;
+  let fireTimer = 0;           // 自动射击计时
   let shake = { t: 0, mag: 0 };
-  let danger = 0;            // 0..1 危险强度（驱动红光）
-  let flashWarning = 0;      // 失去生命时的强闪
+  let danger = 0;
+  let flashWarning = 0;
+  let framesSinceStart = 0;
 
   // ---------- DOM ----------
   let elScore, elLives, elLevel, elDanger, elToast, elOver, elOverTitle, elOverScore, elOverStats;
 
-  // ---------- 可调参数（关卡难度系数） ----------
+  // ---------- 可调参数 ----------
   const BASE = {
-    ballSpeed: 360,          // px/s
-    planetSpeed: 26,         // px/s 初始下压速度
-    spawnInterval: 1.7,     // s 初始生成间隔
-    planetHP: 1,
+    shipSpeed: 320,         // 战机移动速度 px/s
+    bulletSpeed: 600,       // 子弹速度 px/s
+    fireRate: 0.22,         // 射击间隔秒
+    planetSpeed: 55,        // 天体下落基础速度
+    spawnInterval: 1.8,     // 生成间隔秒
+    bulletDamage: 1,        // 每发子弹伤害
+    planetHPBase: 1,        // 基础血量
   };
-
-  const PALETTE = [
-    '#6cf', '#f6c', '#fc6', '#9f9', '#f96', '#c9f', '#6ff', '#ff7b9c', '#7bff9c',
-  ];
-  // 借用真实天体名增加代入感
-  const NAMES = ['水星', '金星', '火星', '木星', '土星', '天王星', '海王星', '冥王星',
-                 '谷神星', '木卫三', '天狼星', '参宿四', '北落师门', '比邻星'];
 
   // ============ 工具 ============
   function $(id) { return document.getElementById(id); }
@@ -64,7 +65,6 @@ window.ArcadeGame = (function () {
   function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 
   // ============ 音效（Web Audio 合成，无需音频文件） ============
-  // 移动端需在用户手势后解锁 AudioContext，故首次输入时调用 unlock()
   const Sfx = (function () {
     let actx = null;
     let muted = false;
@@ -112,12 +112,12 @@ window.ArcadeGame = (function () {
     }
     return {
       unlock() { ensure(); },
+      shoot() { tone({ freq: 880, freqEnd: 440, type: 'square', dur: 0.06, vol: 0.08 }); },
       hit() { tone({ freq: 540, freqEnd: 300, type: 'square', dur: 0.08, vol: 0.10 }); },
       destroy() {
         noise({ dur: 0.26, vol: 0.32, filterFreq: 1800 });
         tone({ freq: 200, freqEnd: 60, type: 'sawtooth', dur: 0.26, vol: 0.16 });
       },
-      paddle() { tone({ freq: 300, freqEnd: 540, type: 'sine', dur: 0.07, vol: 0.12 }); },
       lifeLost() { tone({ freq: 220, freqEnd: 70, type: 'sawtooth', dur: 0.42, vol: 0.22 }); },
       levelUp() {
         [523, 659, 784, 1046].forEach((f, i) =>
@@ -133,6 +133,15 @@ window.ArcadeGame = (function () {
     };
   })();
 
+  // ============ 真实天体池 ============
+  function getArcadePool() {
+    var pool = (typeof CELESTIAL_DATA !== 'undefined') ? CELESTIAL_DATA.slice() : [];
+    return pool.filter(function(b) {
+      return b.category !== 'galaxy' && b.category !== 'blackhole';
+    });
+  }
+  let arcadePool = [];
+
   // ============ 初始化 / 尺寸 ============
   function init() {
     canvas = $('arcade-canvas');
@@ -147,137 +156,159 @@ window.ArcadeGame = (function () {
     elOverScore = $('arcade-over-score');
     elOverStats = $('arcade-over-stats');
 
-    const muteBtn = $('arcade-mute');
+    // 静音开关
+    var muteBtn = $('arcade-mute');
     if (muteBtn) {
-      muteBtn.textContent = Sfx.isMuted() ? '🔇' : '🔊';
-      muteBtn.addEventListener('click', () => {
-        const m = Sfx.toggleMute();
-        muteBtn.textContent = m ? '🔇' : '🔊';
-        if (!m) { Sfx.unlock(); Sfx.paddle(); } // 取消静音时给个反馈音
+      muteBtn.textContent = Sfx.isMuted() ? '\uD83D\uDD07' : '\uD83D\uDD0A';
+      muteBtn.addEventListener('click', function () {
+        var m = Sfx.toggleMute();
+        muteBtn.textContent = m ? '\uD83D\uDD07' : '\uD83D\uDD0A';
+        if (!m) { Sfx.unlock(); Sfx.shoot(); }
       });
     }
 
+    arcadePool = getArcadePool();
     initBackground();
     bindInput();
   }
 
-  // 因为 canvas 初始 display:none 时 getBoundingClientRect 为 0，
-  // 必须在屏幕可见后再调用 resize()。
   function resize() {
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    var rect = canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
-    dpr = Math.min(window.devicePixelRatio || 1, 2.25); // 高刷屏限制 DPR 保性能
+    dpr = Math.min(window.devicePixelRatio || 1, 2.25);
     W = rect.width;
     H = rect.height;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    if (paddle) {
-      paddle.w = clamp(W * 0.22, 70, 160);
-      paddle.h = clamp(H * 0.022, 12, 22);
-      paddle.y = H - paddle.h - 18;
-      paddle.x = clamp(paddle.x || W / 2, paddle.w / 2, W - paddle.w / 2);
+    // 重置战机位置到安全区域
+    if (ship) {
+      ship.x = clamp(ship.x, ship.r + 10, W - ship.r - 10);
+      ship.y = clamp(ship.y, H * 0.55, H - ship.r - 10);
     }
-    // 将界外实体收回
-    balls.forEach(b => {
-      if (b.x < b.r) b.x = b.r;
-      if (b.x > W - b.r) b.x = W - b.r;
-    });
   }
 
   function initBackground() {
     bgStars = [];
-    for (let i = 0; i < 90; i++) {
+    for (var i = 0; i < 100; i++) {
       bgStars.push({
         x: Math.random(), y: Math.random(),
-        r: rand(0.4, 1.8),
-        s: rand(8, 40),            // 下流速度 px/s
+        r: rand(0.4, 2),
+        s: rand(12, 50),
         a: rand(0.2, 0.9),
       });
     }
   }
 
-  // ============ 输入 ============
+  // ============ 输入（触摸/鼠标拖动控制战机位置） ============
+  let touchActive = false;
   function bindInput() {
-    // 指针（鼠标/触摸统一），滑动控制挡板
-    function moveTo(clientX) {
-      if (!paddle || state !== 'playing') return;
-      const rect = canvas.getBoundingClientRect();
-      const x = clientX - rect.left;
-      paddle.x = clamp(x, paddle.w / 2, W - paddle.w / 2);
+    // 触摸/鼠标 → 移动战机到手指位置
+    function moveShip(clientX, clientY) {
+      if (!ship || state !== 'playing' || !canvas) return;
+      var rect = canvas.getBoundingClientRect();
+      var x = clientX - rect.left;
+      var y = clientY - rect.top;
+      // 限制在画布范围内
+      ship.targetX = clamp(x, ship.r + 5, W - ship.r - 5);
+      ship.targetY = clamp(y, ship.r + 5, H - ship.r - 5);
     }
-    canvas.addEventListener('pointerdown', e => { Sfx.unlock(); moveTo(e.clientX); });
-    canvas.addEventListener('pointermove', e => {
-      if (e.pressure > 0 || e.buttons > 0 || e.pointerType === 'touch') moveTo(e.clientX);
-    });
-    // 防止移动端滑动页面
-    canvas.addEventListener('touchmove', e => { e.preventDefault(); }, { passive: false });
 
-    // 桌面调试：左右方向键微调
-    window.addEventListener('keydown', e => {
-      if (state !== 'playing' || !paddle) return;
-      if (e.key === 'ArrowLeft') paddle.x = clamp(paddle.x - 24, paddle.w / 2, W - paddle.w / 2);
-      if (e.key === 'ArrowRight') paddle.x = clamp(paddle.x + 24, paddle.w / 2, W - paddle.w / 2);
+    canvas.addEventListener('pointerdown', function(e) {
+      Sfx.unlock();
+      touchActive = true;
+      moveShip(e.clientX, e.clientY);
+    });
+    canvas.addEventListener('pointermove', function(e) {
+      if (touchActive || e.pointerType === 'touch') moveShip(e.clientX, e.clientY);
+    });
+    canvas.addEventListener('pointerup', function() { touchActive = false; });
+    canvas.addEventListener('pointerleave', function() { touchActive = false; });
+    canvas.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+
+    // 键盘备用
+    window.addEventListener('keydown', function(e) {
+      if (state !== 'playing' || !ship) return;
+      var step = 20;
+      if (e.key === 'ArrowLeft' || e.key === 'a') ship.targetX = clamp(ship.x - step, ship.r, W - ship.r);
+      if (e.key === 'ArrowRight' || e.key === 'd') ship.targetX = clamp(ship.x + step, ship.r, W - ship.r);
+      if (e.key === 'ArrowUp' || e.key === 'w') ship.targetY = clamp(ship.y - step, ship.r, H - ship.r);
+      if (e.key === 'ArrowDown' || e.key === 's') ship.targetY = clamp(ship.y + step, ship.r, H - ship.r);
     });
   }
 
   // ============ 关卡难度 ============
   function difficulty() {
-    const k = level - 1;
+    var k = level - 1;
     return {
-      ballSpeed: BASE.ballSpeed * (1 + k * 0.06),
-      planetSpeed: BASE.planetSpeed * (1 + k * 0.18),
-      spawnInterval: Math.max(0.55, BASE.spawnInterval - k * 0.12),
-      planetHP: BASE.planetHP + (level >= 3 ? 1 : 0) + (level >= 6 ? 1 : 0),
+      planetSpeed: BASE.planetSpeed * (1 + k * 0.12),
+      spawnInterval: Math.max(0.6, BASE.spawnInterval - k * 0.10),
+      planetHP: BASE.planetHPBase + (level >= 3 ? 1 : 0) + (level >= 6 ? 1 : 0),
     };
   }
 
   // ============ 实体生成 ============
   function spawnPlanet() {
-    const d = difficulty();
-    const r = rand(W * 0.05, W * 0.11);
-    const x = rand(r + 4, W - r - 4);
+    if (arcadePool.length === 0) arcadePool = getArcadePool();
+    var body = arcadePool.length > 0 ? pick(arcadePool) : {
+      id: 'fallback_' + Math.random().toString(36).slice(2, 6),
+      name: ['水星', '金星', '火星', '木星', '土星', '天王星', '海王星', '月球'][(Math.random() * 8) | 0],
+      color: pick(['#6cf', '#f6c', '#fc6', '#9f9', '#f96', '#c9f']),
+      category: 'planet',
+      image: null,
+    };
+    var d = difficulty();
+
+    // 半径按屏幕比例，恒星大、卫星小
+    var baseR = body.category === 'star' ? rand(0.07, 0.12) :
+                body.category === 'moon' ? rand(0.03, 0.055) :
+                rand(0.045, 0.09);
+    var r = clamp(baseR * W, 20, Math.min(W * 0.16, 65));
+
     planets.push({
-      x, y: -r - rand(0, 60),
-      r,
+      x: rand(r + 10, W - r - 10),
+      y: -r - rand(5, 50),
+      r: r,
       vy: d.planetSpeed * rand(0.85, 1.15),
-      vx: rand(-12, 12),
-      hp: d.planetHP + ((Math.random() < 0.25) ? 1 : 0),
+      vx: rand(-18, 18),
+      hp: d.planetHP + ((Math.random() < 0.2) ? 1 : 0),
       maxHp: 0,
-      color: pick(PALETTE),
-      name: pick(NAMES),
+      color: body.color || '#888',
+      name: body.name || '未知天体',
+      bodyId: body.id,
+      hasImage: !!body.image,
       flash: 0,
-      rot: Math.random() * Math.PI,
-      rotSpeed: rand(-1, 1),
+      rot: Math.random() * Math.PI * 2,
+      rotSpeed: rand(-0.6, 0.6),
     });
-    planets[planets.length - 1].maxHp = planets[planets.length - 1].hp;
+    var p = planets[planets.length - 1];
+    p.maxHp = p.hp;
   }
 
-  function spawnBall(x, y) {
-    const d = difficulty();
-    const ang = rand(-Math.PI * 0.65, -Math.PI * 0.35); // 向上偏
-    balls.push({
-      x: x ?? W / 2,
-      y: y ?? (H - 60),
-      r: clamp(W * 0.022, 8, 16),
-      vx: Math.cos(ang) * d.ballSpeed,
-      vy: Math.sin(ang) * d.ballSpeed,
+  function fireBullet() {
+    if (!ship) return;
+    bullets.push({
+      x: ship.x,
+      y: ship.y - ship.r - 4,
+      r: clamp(W * 0.012, 4, 7),
+      vy: -BASE.bulletSpeed,
     });
+    Sfx.shoot();
   }
 
   // ============ 粒子 / 特效 ============
   function burst(x, y, color, n, power) {
     n = Math.min(n, 60);
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const sp = rand(40, 260) * (power || 1);
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2;
+      var sp = rand(40, 280) * (power || 1);
       particles.push({
-        x, y,
+        x: x, y: y,
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
         life: rand(0.3, 0.8), max: 0.8,
-        r: rand(1, 3.4), color,
+        r: rand(1.2, 4.5), color: color,
       });
     }
   }
@@ -286,152 +317,145 @@ window.ArcadeGame = (function () {
     elToast.textContent = msg;
     elToast.classList.add('show');
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => elToast.classList.remove('show'), 1100);
+    toast._t = setTimeout(function () { elToast.classList.remove('show'); }, 1100);
   }
 
-  // ============ 碰撞 ============
-  function ballHitsPlanet(b, p) {
-    const dx = b.x - p.x, dy = b.y - p.y;
-    const dist = Math.hypot(dx, dy);
-    const min = b.r + p.r;
-    if (dist >= min) return false;
+  // ============ 碰撞检测 ============
+  function circleCollide(a, b) {
+    var dx = a.x - b.x, dy = a.y - b.y;
+    var dist = Math.hypot(dx, dy);
+    var min = (a.r || 0) + (b.r || 0);
+    return dist < min;
+  }
 
-    // 推出 + 沿法线反弹
-    const nx = dx / (dist || 1), ny = dy / (dist || 1);
-    const overlap = min - dist;
-    b.x += nx * overlap;
-    b.y += ny * overlap;
-    const dot = b.vx * nx + b.vy * ny;
-    if (dot < 0) { b.vx -= 2 * dot * nx; b.vy -= 2 * dot * ny; }
+  function bulletHitsPlanet(bullet, planet) {
+    if (!circleCollide(bullet, planet)) return false;
 
-    // 击退：给星球一个向上的冲量
-    p.vy -= 40;
-    p.vx += rand(-20, 20);
-    p.flash = 1;
+    planet.hp -= BASE.bulletDamage;
+    planet.flash = 1;
 
-    p.hp -= 1;
-    if (p.hp <= 0) {
-      burst(p.x, p.y, p.color, 36, 1.3);
+    if (planet.hp <= 0) {
+      burst(planet.x, planet.y, planet.color, 40, 1.4);
       score += 100 * level;
       addShake(7);
       Sfx.destroy();
-      planets.splice(planets.indexOf(p), 1);
+      planets.splice(planets.indexOf(planet), 1);
     } else {
-      burst(b.x, b.y, p.color, 10, 0.7);
-      addShake(3);
+      burst(bullet.x, bullet.y, planet.color, 8, 0.6);
       Sfx.hit();
     }
     updateHud();
     return true;
   }
 
-  function ballHitsPaddle(b, pad) {
-    // 最近点法（圆 vs AABB）
-    const cx = clamp(b.x, pad.x - pad.w / 2, pad.x + pad.w / 2);
-    const cy = clamp(b.y, pad.y, pad.y + pad.h);
-    const dx = b.x - cx, dy = b.y - cy;
-    if (dx * dx + dy * dy > b.r * b.r) return false;
-    if (b.vy <= 0) return false; // 只在向下时接球
+  function shipHitsPlanet(p) {
+    if (!circleCollide(ship, p)) return false;
 
-    b.y = cy - b.r - 0.5;
-    // 反弹 + 由击打点决定角度（倾角控制）
-    const off = (b.x - pad.x) / (pad.w / 2); // -1..1
-    const speed = Math.hypot(b.vx, b.vy);
-    const ang = -Math.PI / 2 + off * (Math.PI * 0.42); // 上偏，最多 ~75°
-    b.vx = Math.cos(ang) * speed;
-    b.vy = Math.sin(ang) * speed;
-    p_flashPaddle();
-    Sfx.paddle();
+    loseLife();
+    // 被撞到的天体也一起消失
+    burst(p.x, p.y, p.color, 30, 1.1);
+    planets.splice(planets.indexOf(p), 1);
     return true;
   }
-  let paddleFlash = 0;
-  function p_flashPaddle() { paddleFlash = 1; }
 
-  // ============ 更新 ============
+  // ============ 更新逻辑 ============
   function update(dt) {
     elapsed += dt;
     levelTimer += dt;
+    framesSinceStart++;
+
+    // 开局安全：第 10 帧强制 resize
+    if (framesSinceStart === 10) resize();
 
     // 关卡推进
     if (levelTimer >= 30) {
       levelTimer = 0; level += 1;
-      toast('第 ' + level + ' 关！压力增强');
+      toast('第 ' + level + ' 关！天体加速');
       Sfx.levelUp();
       updateHud();
     }
 
-    // 生成星球
+    // 生成天体
     spawnTimer += dt;
     if (spawnTimer >= difficulty().spawnInterval) {
       spawnTimer = 0;
       spawnPlanet();
-      if (level >= 4 && Math.random() < 0.4) spawnPlanet(); // 高密度
+      if (level >= 4 && Math.random() < 0.3) spawnPlanet();
     }
 
-    // 挡板
-    if (paddleFlash > 0) paddleFlash = Math.max(0, paddleFlash - dt * 3);
+    // 自动射击
+    fireTimer += dt;
+    if (fireTimer >= BASE.fireRate) {
+      fireTimer = 0;
+      fireBullet();
+    }
 
-    // 能量球
-    for (let i = balls.length - 1; i >= 0; i--) {
-      const b = balls[i];
-      b.x += b.vx * dt;
+    // ===== 战机平滑跟随手指 =====
+    if (ship) {
+      var dx = ship.targetX - ship.x;
+      var dy = ship.targetY - ship.y;
+      // 平滑插值（lerp），手感更顺
+      ship.x += dx * Math.min(1, dt * 12);
+      ship.y += dy * Math.min(1, dt * 12);
+      // 引擎尾焰动画
+      ship.enginePhase = (ship.enginePhase || 0) + dt * 15;
+    }
+
+    // ===== 子弹更新 =====
+    for (var i = bullets.length - 1; i >= 0; i--) {
+      var b = bullets[i];
       b.y += b.vy * dt;
 
-      // 左右墙
-      if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
-      if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
-      // 顶墙
-      if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
-
-      // 挡板
-      ballHitsPaddle(b, paddle);
-
-      // 星球
-      for (let j = planets.length - 1; j >= 0; j--) {
-        ballHitsPlanet(b, planets[j]);
+      // 子弹 vs 天体碰撞
+      var hit = false;
+      for (var j = planets.length - 1; j >= 0; j--) {
+        if (bulletHitsPlanet(b, planets[j])) { hit = true; break; }
       }
+      if (hit) { bullets.splice(i, 1); continue; }
 
-      // 掉落底部
-      if (b.y - b.r > H) {
-        balls.splice(i, 1);
-        if (balls.length === 0) loseLife();
-      }
+      // 出屏移除
+      if (b.y + b.r < 0) bullets.splice(i, 1);
     }
 
-    // 星球下压
-    let nearest = Infinity;
-    for (let j = planets.length - 1; j >= 0; j--) {
-      const p = planets[j];
+    // ===== 天体更新 =====
+    var nearestBottom = Infinity;
+    for (var j = planets.length - 1; j >= 0; j--) {
+      var p = planets[j];
       p.y += p.vy * dt;
       p.x += p.vx * dt;
       p.rot += p.rotSpeed * dt;
       if (p.flash > 0) p.flash = Math.max(0, p.flash - dt * 2.5);
-      // 横向边界软反弹
+
+      // 左右边界反弹
       if (p.x < p.r) { p.x = p.r; p.vx = Math.abs(p.vx); }
       if (p.x > W - p.r) { p.x = W - p.r; p.vx = -Math.abs(p.vx); }
 
-      const bottomGap = (paddle.y) - (p.y + p.r);
-      if (bottomGap < nearest) nearest = bottomGap;
+      // 计算最近底部距离（用于危险预警）
+      var bottomDist = H - (p.y + p.r);
+      if (bottomDist < nearestBottom) nearestBottom = bottomDist;
 
-      // 触底：失去生命
-      if (p.y + p.r >= paddle.y + paddle.h) {
-        burst(p.x, p.y, '#ff3b5c', 28, 1.2);
+      // 天体触底 → 扣命
+      if (p.y - p.r > H) {
         planets.splice(j, 1);
         loseLife();
+        continue;
       }
+
+      // 天体撞击战机
+      shipHitsPlanet(p);
     }
 
-    // 危险预警强度
-    const dangerTarget = clamp(1 - nearest / (H * 0.45), 0, 1);
+    // 危险预警值
+    var dangerTarget = clamp(1 - nearestBottom / (H * 0.4), 0, 1);
     danger += (dangerTarget - danger) * Math.min(1, dt * 6);
     if (flashWarning > 0) flashWarning = Math.max(0, flashWarning - dt * 2.5);
 
-    // 粒子
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const pt = particles[i];
+    // ===== 粒子更新 =====
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var pt = particles[i];
       pt.x += pt.vx * dt;
       pt.y += pt.vy * dt;
-      pt.vy += 220 * dt; // 轻微重力
+      pt.vy += 200 * dt;   // 微重力
       pt.life -= dt;
       if (pt.life <= 0) particles.splice(i, 1);
     }
@@ -443,15 +467,13 @@ window.ArcadeGame = (function () {
   function loseLife() {
     lives -= 1;
     flashWarning = 1;
-    addShake(10);
-    burst(W / 2, H - 30, '#ff3b5c', 24, 1.1);
+    addShake(12);
+    burst(ship ? ship.x : W / 2, ship ? ship.y : H - 50, '#ff3b5c', 28, 1.1);
     Sfx.lifeLost();
     updateHud();
     if (lives <= 0) {
       gameOver();
     } else {
-      // 重新发球
-      spawnBall(paddle.x, paddle.y - 30);
       toast('剩余生命 ' + lives);
     }
   }
@@ -460,10 +482,9 @@ window.ArcadeGame = (function () {
   function render() {
     ctx.clearRect(0, 0, W, H);
 
-    // 震屏偏移
-    let sx = 0, sy = 0;
+    var sx = 0, sy = 0;
     if (shake.t > 0) {
-      const m = shake.mag * shake.t;
+      var m = shake.mag * shake.t;
       sx = rand(-m, m); sy = rand(-m, m);
     }
     ctx.save();
@@ -472,28 +493,30 @@ window.ArcadeGame = (function () {
     drawBackground();
 
     // 顶部压迫区视觉带
-    const grad = ctx.createLinearGradient(0, 0, 0, H * 0.12);
-    grad.addColorStop(0, 'rgba(255,60,90,0.18)');
+    var grad = ctx.createLinearGradient(0, 0, 0, H * 0.1);
+    grad.addColorStop(0, 'rgba(255,60,90,0.16)');
     grad.addColorStop(1, 'rgba(255,60,90,0)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H * 0.12);
+    ctx.fillRect(0, 0, W, H * 0.1);
 
     // 底部危险线
-    ctx.strokeStyle = 'rgba(255,80,110,' + (0.25 + danger * 0.5) + ')';
+    ctx.strokeStyle = 'rgba(255,80,110,' + (0.2 + danger * 0.45) + ')';
     ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
     ctx.beginPath();
-    ctx.moveTo(0, paddle.y - 6);
-    ctx.lineTo(W, paddle.y - 6);
+    ctx.moveTo(0, H - 3);
+    ctx.lineTo(W, H - 3);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    // 星球
+    // 天体
     planets.forEach(drawPlanet);
 
-    // 能量球
-    balls.forEach(drawBall);
+    // 子弹
+    bullets.forEach(drawBullet);
 
-    // 挡板
-    drawPaddle();
+    // 战机
+    if (ship) drawShip();
 
     // 粒子
     particles.forEach(drawParticle);
@@ -502,18 +525,16 @@ window.ArcadeGame = (function () {
   }
 
   function drawBackground() {
-    // 深空渐变
-    const g = ctx.createLinearGradient(0, 0, 0, H);
+    var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#05010f');
     g.addColorStop(1, '#0a0420');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
     // 星尘流动
-    const dt = 1 / 60;
-    bgStars.forEach(s => {
-      s.y += (s.s * dt) / H;
-      if (s.y > 1) { s.y = 0; s.x = Math.random(); }
+    bgStars.forEach(function(s) {
+      s.y += (s.s / 60);   // 基于 60fps 的恒定速度
+      if (s.y > 1.05) { s.y = -0.02; s.x = Math.random(); }
       ctx.globalAlpha = s.a;
       ctx.fillStyle = '#bfe9ff';
       ctx.beginPath();
@@ -523,6 +544,9 @@ window.ArcadeGame = (function () {
     ctx.globalAlpha = 1;
   }
 
+  /**
+   * 绘制天体 — 优先用真实图片（PKImageCache），否则程序化绘制
+   */
   function drawPlanet(p) {
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -530,65 +554,129 @@ window.ArcadeGame = (function () {
 
     // 命中光晕
     if (p.flash > 0) {
-      const fg = ctx.createRadialGradient(0, 0, p.r * 0.4, 0, 0, p.r * 1.8);
-      fg.addColorStop(0, 'rgba(255,255,255,' + (0.6 * p.flash) + ')');
+      var fg = ctx.createRadialGradient(0, 0, p.r * 0.3, 0, 0, p.r * 1.8);
+      fg.addColorStop(0, 'rgba(255,255,255,' + (0.55 * p.flash) + ')');
       fg.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = fg;
       ctx.beginPath(); ctx.arc(0, 0, p.r * 1.8, 0, Math.PI * 2); ctx.fill();
     }
 
-    // 球体
-    const g = ctx.createRadialGradient(-p.r * 0.3, -p.r * 0.3, p.r * 0.2, 0, 0, p.r);
-    g.addColorStop(0, '#ffffff');
-    g.addColorStop(0.25, p.color);
-    g.addColorStop(1, shade(p.color, -0.55));
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
+    // 尝试真实图片
+    var img = null;
+    if (p.hasImage && typeof window.PKImageCache !== 'undefined') {
+      img = window.PKImageCache[p.bodyId];
+    }
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(img, -p.r, -p.r, p.r * 2, p.r * 2);
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      // 程序化球体
+      var g = ctx.createRadialGradient(-p.r * 0.3, -p.r * 0.3, p.r * 0.15, 0, 0, p.r);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.25, p.color);
+      g.addColorStop(1, shadeColor(p.color, -0.55));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
+    }
 
-    // 受损裂纹（多血量时）
+    // 受损裂纹
     if (p.maxHp > 1 && p.hp < p.maxHp) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.moveTo(-p.r * 0.5, 0); ctx.lineTo(p.r * 0.4, p.r * 0.3);
+      ctx.moveTo(-p.r * 0.4, -p.r * 0.2); ctx.lineTo(p.r * 0.3, p.r * 0.35);
+      ctx.moveTo(p.r * 0.1, -p.r * 0.4); ctx.lineTo(-p.r * 0.2, p.r * 0.15);
       ctx.stroke();
     }
     ctx.restore();
 
-    // 名称（不旋转）
+    // 名称标签（不旋转）
     ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.78)';
-    ctx.font = Math.max(10, p.r * 0.34) + 'px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    var fontSize = Math.max(11, Math.min(p.r * 0.38, 15));
+    ctx.font = fontSize + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(p.name, p.x, p.y - p.r - 4);
     ctx.restore();
   }
 
-  function drawBall(b) {
-    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 2.2);
-    g.addColorStop(0, 'rgba(120,230,255,0.9)');
-    g.addColorStop(0.4, 'rgba(80,200,255,0.5)');
-    g.addColorStop(1, 'rgba(80,200,255,0)');
+  function drawBullet(b) {
+    // 发光子弹
+    var g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 3);
+    g.addColorStop(0, 'rgba(120,255,200,0.95)');
+    g.addColorStop(0.4, 'rgba(80,230,180,0.5)');
+    g.addColorStop(1, 'rgba(80,230,180,0)');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 3, 0, Math.PI * 2); ctx.fill();
 
-    ctx.fillStyle = '#eaffff';
+    ctx.fillStyle = '#dfffff';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
   }
 
-  function drawPaddle() {
-    const x = paddle.x - paddle.w / 2;
-    const glow = 0.4 + paddleFlash * 0.6;
-    ctx.shadowColor = 'rgba(80,220,255,' + glow + ')';
-    ctx.shadowBlur = 16 + paddleFlash * 20;
-    const g = ctx.createLinearGradient(x, 0, x + paddle.w, 0);
-    g.addColorStop(0, '#1ad6ff');
-    g.addColorStop(0.5, '#7af9ff');
-    g.addColorStop(1, '#1ad6ff');
-    ctx.fillStyle = g;
-    roundRect(x, paddle.y, paddle.w, paddle.h, paddle.h / 2);
+  /**
+   * 绘制战机 — 三角形飞船 + 引擎尾焰
+   */
+  function drawShip() {
+    var sx = ship.x, sy = ship.y, sr = ship.r;
+    var phase = ship.enginePhase || 0;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // 引擎尾焰
+    var flameLen = sr * (1.0 + 0.35 * Math.sin(phase));
+    var flameGrad = ctx.createLinearGradient(0, sr * 0.3, 0, sr * 0.3 + flameLen);
+    flameGrad.addColorStop(0, 'rgba(80,200,255,0.95)');
+    flameGrad.addColorStop(0.4, 'rgba(40,140,255,0.6)');
+    flameGrad.addColorStop(1, 'rgba(40,140,255,0)');
+    ctx.fillStyle = flameGrad;
+    ctx.beginPath();
+    ctx.moveTo(-sr * 0.4, sr * 0.3);
+    ctx.lineTo(sr * 0.4, sr * 0.3);
+    ctx.lineTo(0, sr * 0.3 + flameLen);
+    ctx.closePath();
     ctx.fill();
+
+    // 飞船主体（三角形）
+    ctx.shadowColor = 'rgba(80,200,255,0.7)';
+    ctx.shadowBlur = 16;
+    var bodyGrad = ctx.createLinearGradient(0, -sr, 0, sr * 0.5);
+    bodyGrad.addColorStop(0, '#7af9ff');
+    bodyGrad.addColorStop(0.5, '#1ad6ff');
+    bodyGrad.addColorStop(1, '#0e8faa');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -sr);           // 机头
+    ctx.lineTo(-sr * 0.75, sr * 0.6);  // 左翼
+    ctx.lineTo(0, sr * 0.3);           // 机尾中
+    ctx.lineTo(sr * 0.75, sr * 0.6);   // 右翼
+    ctx.closePath();
+    ctx.fill();
+
+    // 驾驶舱高光
     ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(200,255,255,0.7)';
+    ctx.beginPath();
+    ctx.ellipse(0, -sr * 0.2, sr * 0.2, sr * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 护盾光环（受伤后短暂闪烁）
+    if (flashWarning > 0) {
+      ctx.strokeStyle = 'rgba(255,60,90,' + (flashWarning * 0.7) + ')';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, sr * 1.4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   function drawParticle(pt) {
@@ -598,36 +686,26 @@ window.ArcadeGame = (function () {
     ctx.globalAlpha = 1;
   }
 
-  // ============ 辅助绘制 ============
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-  function shade(hex, amt) {
-    const c = hex.replace('#', '');
-    let r = parseInt(c.substr(0, 2), 16);
-    let g = parseInt(c.substr(2, 2), 16);
-    let b = parseInt(c.substr(4, 2), 16);
-    r = clamp(Math.round(r + r * amt), 0, 255);
-    g = clamp(Math.round(g + g * amt), 0, 255);
-    b = clamp(Math.round(b + b * amt), 0, 255);
-    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  // ============ 辅助函数 ============
+  function shadeColor(hex, amt) {
+    var c = hex.replace('#', '');
+    var rr = parseInt(c.substr(0, 2), 16);
+    var gg = parseInt(c.substr(2, 2), 16);
+    var bb = parseInt(c.substr(4, 2), 16);
+    rr = clamp(Math.round(rr + rr * amt), 0, 255);
+    gg = clamp(Math.round(gg + gg * amt), 0, 255);
+    bb = clamp(Math.round(bb + bb * amt), 0, 255);
+    return 'rgb(' + rr + ',' + gg + ',' + bb + ')';
   }
 
   // ============ HUD / 危险光 ============
   function updateHud() {
     elScore.textContent = score;
     elLevel.textContent = level;
-    elLives.textContent = lives > 0 ? '♥'.repeat(lives) : '—';
+    elLives.textContent = lives > 0 ? '\u2665'.repeat(lives) : '\u2014';
   }
   function updateDangerVisual() {
-    // 危险红光 + 失去生命的强闪
-    const a = clamp(danger * 0.7 + flashWarning * 0.5, 0, 0.85);
+    var a = clamp(danger * 0.7 + flashWarning * 0.5, 0, 0.85);
     elDanger.style.opacity = a.toFixed(2);
     elDanger.style.boxShadow = 'inset 0 0 ' + (30 + danger * 60) + 'px rgba(255,40,70,' + (0.4 + danger * 0.5) + ')';
   }
@@ -635,7 +713,7 @@ window.ArcadeGame = (function () {
   // ============ 主循环 ============
   function loop(t) {
     if (!running) return;
-    const dt = Math.min(0.05, (t - lastT) / 1000 || 0);
+    var dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
     lastT = t;
 
     if (state === 'playing') {
@@ -651,16 +729,34 @@ window.ArcadeGame = (function () {
     if (!canvas) init();
     Sfx.unlock();
     Sfx.start();
-    // 屏幕已可见，重置尺寸
     resize();
+
+    // 重置状态
     score = 0; lives = 3; level = 1; elapsed = 0;
-    spawnTimer = 0; levelTimer = 0; danger = 0; flashWarning = 0;
-    planets = []; particles = []; balls = [];
-    paddle = { x: W / 2, y: H - 40, w: 0, h: 0, vx: 0 };
-    resize(); // 用真实尺寸设置 paddle
-    spawnBall();
-    // 初始铺几个星球
-    for (let i = 0; i < 3; i++) spawnPlanet();
+    spawnTimer = 0; levelTimer = 0; fireTimer = 0;
+    danger = 0; flashWarning = 0;
+    framesSinceStart = 0;
+    planets = []; particles = []; bullets = [];
+
+    // 创建战机 — 大小明显可见
+    var shipR = clamp(W * 0.055, 24, 42);
+    ship = {
+      x: W / 2,
+      y: H * 0.78,
+      targetX: W / 2,
+      targetY: H * 0.78,
+      r: shipR,
+      enginePhase: 0,
+    };
+
+    // 初始天体（直接出现在屏幕上半部，不用等飘入）
+    for (var i = 0; i < 3; i++) {
+      spawnPlanet();
+      // 把初始天体拉到屏幕可见区域
+      var p = planets[planets.length - 1];
+      p.y = rand(H * 0.03, H * 0.38);
+    }
+
     elOver.style.display = 'none';
     updateHud();
     state = 'playing';
@@ -668,7 +764,7 @@ window.ArcadeGame = (function () {
     lastT = performance.now();
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(loop);
-    toast('第 1 关 · 开始！');
+    toast('第 1 关 · 起飞！');
   }
 
   function stop() {
@@ -676,6 +772,7 @@ window.ArcadeGame = (function () {
     state = 'idle';
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (elDanger) elDanger.style.opacity = '0';
+    touchActive = false;
   }
 
   function gameOver() {
@@ -685,7 +782,7 @@ window.ArcadeGame = (function () {
     Sfx.gameOver();
     elOverTitle.textContent = '游戏结束';
     elOverScore.textContent = score;
-    elOverStats.innerHTML = '坚持到第 <b>' + level + '</b> 关 · 击退星球累计得分';
+    elOverStats.innerHTML = '坚持到第 <b>' + level + '</b> 关 \u00B7 击毁天体累计得分';
     elOver.style.display = 'flex';
   }
 

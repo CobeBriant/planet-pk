@@ -129,6 +129,8 @@
 
   // ========== 图片加载系统 ==========
   const imageCache = {};
+  // 暴露给 arcade.js 复用（避免重复加载）
+  window.PKImageCache = imageCache;
 
   function preloadImages(callback) {
     const bodiesWithImages = getAllBodies().filter(b => b.image && !b.isCustom);
