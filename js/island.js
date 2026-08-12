@@ -30,9 +30,9 @@ window.PlanetIslandGame = (function () {
   var islandR = 52;
   var FACE_TEX = null;
 
-  // 物理参数
-  var GRAV = 32, JUMP = 15, ACCEL = 48, BOOST_MULT = 2.3;
-  var MAXSPD = 24, BOOST_MAXSPD = 46, DRAG = 1.9, REST = 0.30;
+  // 物理参数（手感已调：跳更高 / 马力更猛 / 摩擦保留）
+  var GRAV = 30, JUMP = 19, ACCEL = 52, BOOST_MULT = 2.6;
+  var MAXSPD = 26, BOOST_MAXSPD = 52, DRAG = 1.9, REST = 0.30;
 
   // ---------- 输入 ----------
   var input = { x: 0, z: 0, active: false };
@@ -104,8 +104,22 @@ window.PlanetIslandGame = (function () {
     return t;
   }
 
+  // 名字标签（Canvas → Sprite，永远朝向相机）
+  function nameTexture(text, accent) {
+    var c = document.createElement('canvas'); c.width = 256; c.height = 64;
+    var x = c.getContext('2d');
+    x.font = 'bold 36px sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.lineWidth = 7; x.strokeStyle = 'rgba(0,0,0,0.85)';
+    x.strokeText(text, 128, 34);
+    x.fillStyle = accent || '#ffd24d';
+    x.fillText(text, 128, 34);
+    var t = new THREE.Texture(c); t.needsUpdate = true;
+    return t;
+  }
+
   // ============ 生成「天体」===========
-  function makeBeing(body) {
+  function makeBeing(body, labelColor) {
     var R = displayRadius(body);
     var group = new THREE.Group();
     var tex = bodyTexture(body);
@@ -122,9 +136,17 @@ window.PlanetIslandGame = (function () {
     face.position.set(0, R * 0.04, R * 0.98);
     group.add(face);
 
+    // 名字标签（悬在球体上方，始终朝向相机）
+    var label = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTexture(body.name, labelColor || '#ffd24d'), transparent: true, depthTest: false }));
+    var lw = R * 4.2;
+    label.scale.set(lw, lw * 0.25, 1);
+    label.position.set(0, R * 1.55, 0);
+    label.renderOrder = 5;
+    group.add(label);
+
     scene.add(group);
     return {
-      group: group, sphere: sphere, R: R, body: body, mass: massFactor(body),
+      group: group, sphere: sphere, label: label, R: R, body: body, mass: massFactor(body),
       vel: new THREE.Vector3(), grounded: false, jumpCd: 0,
       ai: { tx: rand(-30, 30), tz: rand(-30, 30), hopCd: rand(1, 4), seek: false }
     };
@@ -225,9 +247,9 @@ window.PlanetIslandGame = (function () {
       islandGroup.add(patch);
     }
     ramps = [];
-    addRamp(0, islandR * 0.18, islandR * 0.7, 17);
-    addRamp(Math.PI * 0.66, islandR * 0.16, islandR * 0.7, 15);
-    addRamp(-Math.PI * 0.66, islandR * 0.16, islandR * 0.7, 15);
+    addRamp(0, islandR * 0.18, islandR * 0.72, 20);
+    addRamp(Math.PI * 0.66, islandR * 0.16, islandR * 0.72, 18);
+    addRamp(-Math.PI * 0.66, islandR * 0.16, islandR * 0.72, 18);
   }
 
   // ============ NPC ============
@@ -237,7 +259,7 @@ window.PlanetIslandGame = (function () {
     var pool = getPool();
     for (var i = 0; i < 5; i++) {
       var b = pool[(Math.random() * pool.length) | 0];
-      var nb = makeBeing(b);
+      var nb = makeBeing(b, '#ffd24d');
       var a = rand(0, 6.28), rr = rand(10, islandR * 0.8);
       nb.group.position.set(Math.cos(a) * rr, nb.R, Math.sin(a) * rr);
       nb.ai.tx = rand(-islandR * 0.7, islandR * 0.7);
@@ -430,7 +452,7 @@ window.PlanetIslandGame = (function () {
   function beginPlay(body) {
     showSelect(false);
     if (player) scene.remove(player.group);
-    player = makeBeing(body);
+    player = makeBeing(body, '#9be7ff');
     player.group.position.set(0, player.R, 0);
     state = 'playing';
     collisions = 0; updateScore();
