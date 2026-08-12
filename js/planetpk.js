@@ -43,11 +43,17 @@ window.PlanetPkGame = (function () {
   let orangeFlash = 0;             // 败者爆闪
   let laser = { on: false, x: 0, y: 0, p: 0 };
 
+  // 片头动画
+  let titleL = null, titleR = null;
+  let titleT = 0;
+  let shockwave = { t: 0 };
+
   // ---------- DOM ----------
   let elScore, elStreak, elLives, elDanger, elToast, elOver, elOverTitle, elOverScore, elOverStats;
 
   // ---------- 参数 ----------
   const INTRO_DUR = 0.5, RESOLVE_DUR = 1.0, WIN_DUR = 1.3;
+  const TITLE_DUR = 2.6, TITLE_FLY = 0.7;
   const COL = { cyan: '#00E5FF', red: '#FF1744', gold: '#FFD700', white: '#ffffff' };
 
   // ============ 工具 ============
@@ -93,6 +99,7 @@ window.PlanetPkGame = (function () {
     // 输入：点击左右半屏选择更大的星球
     canvas.addEventListener('pointerdown', function (e) {
       if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
+      if (phase === 'title') { newRound(); return; }
       if (phase !== 'idle' || state !== 'playing') return;
       var rect = canvas.getBoundingClientRect();
       var x = e.clientX - rect.left;
@@ -138,6 +145,23 @@ window.PlanetPkGame = (function () {
     winnerSide = null; loserSide = null; playerCorrect = false;
     laser.on = false; orangeFlash = 0;
     phase = 'intro'; phaseT = 0;
+    sfx('start');
+  }
+
+  // ============ 片头动画 ============
+  function playTitle() {
+    var pair = pickTwo();
+    var R = clamp(Math.min(W, H) * 0.16, 44, 96);
+    var baseY = H * 0.60;
+    if (pair) {
+      titleL = { body: pair[0], side: 'left', R: R, baseY: baseY, eye: 'closed', alpha: 0, x: -W * 0.18, phase: rand(0, 6.28) };
+      titleR = { body: pair[1], side: 'right', R: R, baseY: baseY, eye: 'closed', alpha: 0, x: W * 1.18, phase: rand(0, 6.28) };
+    } else {
+      titleL = null; titleR = null;
+    }
+    titleT = 0;
+    shockwave.t = 0;
+    phase = 'title';
     sfx('start');
   }
 
@@ -228,7 +252,7 @@ window.PlanetPkGame = (function () {
     particles = []; shake.t = 0; cutFlash = 0;
     state = 'playing'; running = true;
     updateHud();
-    newRound();
+    playTitle();
     if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
     lastT = performance.now();
     if (rafId) cancelAnimationFrame(rafId);
@@ -254,6 +278,17 @@ window.PlanetPkGame = (function () {
 
   function update(dt) {
     phaseT += dt;
+
+    // 片头：星球飞入 + 冲击波，结束后进入回合
+    if (phase === 'title') {
+      titleT += dt;
+      if (shockwave.t < TITLE_DUR) shockwave.t += dt;
+      var tk = ease(clamp(titleT / TITLE_FLY, 0, 1));
+      if (titleL) { titleL.x = lerp(-W * 0.18, W * 0.26, tk); titleL.alpha = tk; }
+      if (titleR) { titleR.x = lerp(W * 1.18, W * 0.74, tk); titleR.alpha = tk; }
+      if (titleT >= TITLE_DUR) newRound();
+    }
+
     // 震屏衰减
     if (shake.t > 0) shake.t = Math.max(0, shake.t - dt);
     if (orangeFlash > 0) orangeFlash = Math.max(0, orangeFlash - dt * 2.2);
@@ -308,7 +343,12 @@ window.PlanetPkGame = (function () {
     ctx.save();
     ctx.translate(sx, sy);
 
-    if (phase === 'intro') {
+    if (phase === 'title') {
+      if (titleL) drawPlanet(titleL, titleL.x, titleL.baseY);
+      if (titleR) drawPlanet(titleR, titleR.x, titleR.baseY);
+      drawShockwave();
+      drawTitle();
+    } else if (phase === 'intro') {
       var k = ease(clamp(phaseT / INTRO_DUR, 0, 1));
       if (left) { left.alpha = k; drawPlanet(left, left.x, left.baseY); }
       if (right) { right.alpha = k; drawPlanet(right, right.x, right.baseY); }
@@ -400,7 +440,9 @@ window.PlanetPkGame = (function () {
     ctx.closePath();
     ctx.clip();
     var img = null;
-    if (window.PKImageCache && p.body.name) img = window.PKImageCache[p.body.name];
+    if (window.PKImageCache) {
+      img = window.PKImageCache[p.body.id] || window.PKImageCache[p.body.name];
+    }
     if (img && img.complete && img.naturalWidth) {
       // 用 cover 方式绘制
       var ir = Math.max(R * 2 / img.naturalWidth, R * 2 / img.naturalHeight);
@@ -437,41 +479,78 @@ window.PlanetPkGame = (function () {
     ctx.fillText(p.body.name, x, cy - R - R * 0.42);
     ctx.shadowBlur = 0;
 
-    // 直径
-    var dkm = Math.round(p.body.radius * 2).toLocaleString();
-    ctx.font = '400 ' + Math.round(R * 0.20) + 'px sans-serif';
-    ctx.fillStyle = 'rgba(200,210,240,0.85)';
-    ctx.fillText('直径 ' + dkm + ' km', x, cy + R + R * 0.40);
+    // 直径（PK 过程中先藏起来，玩家点完才揭晓答案）
+    var showDiameter = (phase === 'resolve' || phase === 'win');
+    if (showDiameter) {
+      var dkm = Math.round(p.body.radius * 2).toLocaleString();
+      ctx.font = '400 ' + Math.round(R * 0.20) + 'px sans-serif';
+      ctx.fillStyle = 'rgba(200,210,240,0.85)';
+      ctx.fillText('直径 ' + dkm + ' km', x, cy + R + R * 0.40);
+    }
 
     ctx.restore();
     ctx.globalAlpha = 1;
   }
 
   function drawEyes(p, x, cy, R) {
-    var eyeDX = R * 0.38, eyeDY = -R * 0.05, er = R * 0.18;
+    var eyeDX = R * 0.40, eyeDY = -R * 0.06, er = R * 0.20;
+    var LX = x - eyeDX, RX = x + eyeDX;       // 左右眼中心
+    var glow = (p.eye === 'open') ? '#FF2D2D' : '#FFD23B';
+
     if (p.eye === 'closed') {
-      // 半月闭眼：向下弧线
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = Math.max(2, R * 0.05);
+      // 邪恶怒视：内低外高的眯眼斜线
+      ctx.strokeStyle = glow;
+      ctx.shadowColor = glow; ctx.shadowBlur = 12;
+      ctx.lineWidth = Math.max(3, R * 0.08);
       ctx.lineCap = 'round';
-      for (var s = -1; s <= 1; s += 2) {
-        var ex = x + s * eyeDX;
-        ctx.beginPath();
-        ctx.arc(ex, cy + eyeDY, er, Math.PI * 0.15, Math.PI * 0.85);
-        ctx.stroke();
-      }
+      // 左眼（外上 → 内下）
+      ctx.beginPath();
+      ctx.moveTo(LX - er * 0.85, cy + eyeDY - er * 0.55);
+      ctx.lineTo(LX + er * 0.85, cy + eyeDY + er * 0.55);
+      ctx.stroke();
+      // 右眼（外上 → 内下）
+      ctx.beginPath();
+      ctx.moveTo(RX + er * 0.85, cy + eyeDY - er * 0.55);
+      ctx.lineTo(RX - er * 0.85, cy + eyeDY + er * 0.55);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
     } else if (p.eye === 'open') {
+      // 发红光的狰狞眼睛 + 黑瞳 + 怒眉
       for (var s2 = -1; s2 <= 1; s2 += 2) {
         var ex2 = x + s2 * eyeDX;
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = glow;
+        ctx.shadowColor = glow; ctx.shadowBlur = 20;
         ctx.beginPath(); ctx.arc(ex2, cy + eyeDY, er, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#16203a';
-        ctx.beginPath(); ctx.arc(ex2, cy + eyeDY + er * 0.1, er * 0.5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(ex2 + er * 0.2, cy + eyeDY - er * 0.2, er * 0.16, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#1a0000';
+        ctx.beginPath(); ctx.arc(ex2, cy + eyeDY, er * 0.5, 0, Math.PI * 2); ctx.fill();
+        // 细竖瞳（更邪）
+        ctx.fillStyle = '#000';
+        ctx.fillRect(ex2 - er * 0.10, cy + eyeDY - er * 0.6, er * 0.2, er * 1.2);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.beginPath(); ctx.arc(ex2 + s2 * er * 0.18, cy + eyeDY - er * 0.22, er * 0.14, 0, Math.PI * 2); ctx.fill();
       }
     }
+    drawAngryBrows(LX, RX, cy, R, eyeDY, er);
     // 'x' 状态不在这里画眼睛（由 drawX 覆盖）
+  }
+
+  // 怒眉：内低外高，压在眼睛上方
+  function drawAngryBrows(LX, RX, cy, R, eyeDY, er) {
+    ctx.strokeStyle = 'rgba(15,8,25,0.92)';
+    ctx.lineWidth = Math.max(3, R * 0.07);
+    ctx.lineCap = 'round';
+    var by = cy + eyeDY - er * 1.5;
+    // 左眉：外(左,高) → 内(右,低)
+    ctx.beginPath();
+    ctx.moveTo(LX - er * 1.0, by - R * 0.06);
+    ctx.lineTo(LX + er * 1.0, by + R * 0.07);
+    ctx.stroke();
+    // 右眉：外(右,高) → 内(左,低)
+    ctx.beginPath();
+    ctx.moveTo(RX + er * 1.0, by - R * 0.06);
+    ctx.lineTo(RX - er * 1.0, by + R * 0.07);
+    ctx.stroke();
   }
 
   function drawX(p, prog) {
@@ -541,6 +620,45 @@ window.PlanetPkGame = (function () {
     ctx.fillStyle = '#fff';
     ctx.shadowColor = COL.cyan; ctx.shadowBlur = 18;
     ctx.fillText('VS', 0, 0);
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawTitle() {
+    var cx = W / 2, ty = H * 0.32;
+    var k = ease(clamp(titleT / 0.6, 0, 1));
+    ctx.save();
+    ctx.globalAlpha = k;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var fs = Math.round(Math.min(W, H) * 0.17);
+    ctx.font = '900 ' + fs + 'px sans-serif';
+    ctx.shadowColor = COL.cyan; ctx.shadowBlur = 26;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('星球 PK', cx, ty + (1 - k) * 40);
+    ctx.shadowBlur = 0;
+    // 副标题
+    ctx.globalAlpha = clamp((titleT - 0.35) / 0.4, 0, 1);
+    ctx.font = '600 ' + Math.round(Math.min(W, H) * 0.05) + 'px sans-serif';
+    ctx.fillStyle = 'rgba(180,210,255,0.92)';
+    ctx.fillText('谁更大，谁就赢', cx, ty + fs * 0.95);
+    ctx.globalAlpha = clamp((titleT - 0.8) / 0.5, 0, 1) * 0.7;
+    ctx.font = '400 ' + Math.round(Math.min(W, H) * 0.038) + 'px sans-serif';
+    ctx.fillStyle = 'rgba(150,170,210,0.9)';
+    ctx.fillText('轻触屏幕开始', cx, ty + fs * 1.5);
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawShockwave() {
+    var prog = clamp(shockwave.t / 0.85, 0, 1);
+    if (prog <= 0 || shockwave.t > TITLE_DUR) return;
+    var r = prog * Math.min(W, H) * 0.72;
+    ctx.save();
+    ctx.globalAlpha = (1 - prog) * 0.6;
+    ctx.strokeStyle = COL.cyan;
+    ctx.lineWidth = 4 * (1 - prog) + 1;
+    ctx.shadowColor = COL.cyan; ctx.shadowBlur = 20;
+    ctx.beginPath(); ctx.arc(W / 2, H * 0.60, r, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
     ctx.shadowBlur = 0;
   }
