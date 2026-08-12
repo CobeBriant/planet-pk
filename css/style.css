@@ -1169,6 +1169,29 @@ html, body {
   background: radial-gradient(circle at 32% 30%, #fff6b0, #ff9a00);
 }
 
+.island-stone {
+  position: absolute;
+  left: 18px; bottom: 24px;
+  width: 78px; height: 78px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #c9b79a, #6b5840);
+  color: #2a1c0c;
+  font-weight: 800;
+  font-size: 15px;
+  border: none;
+  box-shadow: 0 0 18px rgba(150, 120, 80, 0.55);
+  z-index: 7;
+  user-select: none;
+  touch-action: none;
+  cursor: pointer;
+  line-height: 1.1;
+}
+.island-stone:active { transform: scale(0.93); }
+.island-stone.boosting {
+  box-shadow: 0 0 28px rgba(200, 160, 100, 0.95);
+  background: radial-gradient(circle at 32% 30%, #e6d6bc, #8a7350);
+}
+
 
 /* ===== 星球岛：红心 + 结算浮层 ===== */
 .island-hearts {

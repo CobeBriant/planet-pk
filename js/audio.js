@@ -90,6 +90,16 @@
     },
     // —— 旧音效（保持与 arcade.js 调用兼容）——
     shoot: function () { tone({ freq: 880, freqEnd: 440, type: 'square', dur: 0.06, vol: 0.08 }); },
+    // 投石头的“嗖”声：噪声扫频 + 下滑音
+    throw: function () {
+      noise({ dur: 0.16, vol: 0.18, filterFreq: 2600 });
+      tone({ freq: 720, freqEnd: 300, type: 'square', dur: 0.12, vol: 0.10 });
+    },
+    // 石头砸中天体的重击
+    smash: function () {
+      noise({ dur: 0.22, vol: 0.34, filterFreq: 1400 });
+      tone({ freq: 180, freqEnd: 60, type: 'sawtooth', dur: 0.22, vol: 0.18 });
+    },
     hit: function () { tone({ freq: 540, freqEnd: 300, type: 'square', dur: 0.08, vol: 0.10 }); },
     destroy: function () {
       noise({ dur: 0.26, vol: 0.32, filterFreq: 1800 });

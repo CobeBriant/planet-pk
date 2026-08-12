@@ -23,6 +23,7 @@ window.PlanetIslandGame = (function () {
   var renderer, scene, camera;
   var starfield, islandGroup, ramps = [];
   var props = [];                  // 道具 / 陷阱
+  var stones = [];                 // 玩家投掷的石头
   var player = null, npcs = [];
   var rafId = null, running = false, lastT = 0;
   var state = 'idle';            // idle | select | playing
@@ -35,6 +36,9 @@ window.PlanetIslandGame = (function () {
   var LIVES = 3;                   // 玩家红心数
   var lives = LIVES;
   var over = false;
+  var playStartMs = 0;             // 本局开始时间（用于结算“坚持时长”）
+  var stoneCd = 0;                 // 投石冷却
+  var BOSS_FACE_TEX = null;        // BOSS 专属脸（更高清、更凶）
 
   // BOSS 专属出场特效
   var bossFx = [];                 // 冲击波 / 粒子
@@ -126,6 +130,37 @@ window.PlanetIslandGame = (function () {
     return t;
   }
 
+  // BOSS 专属脸：更高清（256px）、更凶的发红发光大眼 + 怒眉 + 獠牙
+  function bossFaceTexture() {
+    var c = document.createElement('canvas'); c.width = 256; c.height = 256;
+    var x = c.getContext('2d');
+    function eye(cx) {
+      x.save();
+      x.shadowColor = '#ff2d2d'; x.shadowBlur = 30;
+      x.fillStyle = '#ffe14b';
+      x.beginPath(); x.ellipse(cx, 110, 31, 42, 0, 0, Math.PI * 2); x.fill();
+      x.shadowBlur = 0;
+      x.fillStyle = '#1a0000';
+      x.beginPath(); x.ellipse(cx, 118, 14, 32, 0, 0, Math.PI * 2); x.fill();
+      x.fillStyle = 'rgba(255,255,255,0.92)';
+      x.beginPath(); x.arc(cx - 6, 102, 6, 0, Math.PI * 2); x.fill();
+      x.restore();
+    }
+    eye(86); eye(170);
+    // 凶恶怒眉（内低外高）
+    x.strokeStyle = '#160c20'; x.lineWidth = 24; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(34, 62); x.lineTo(124, 94); x.stroke();
+    x.beginPath(); x.moveTo(222, 62); x.lineTo(132, 94); x.stroke();
+    // 邪恶咧嘴 + 獠牙
+    x.strokeStyle = '#160c20'; x.lineWidth = 14;
+    x.beginPath(); x.moveTo(78, 184); x.quadraticCurveTo(128, 222, 178, 184); x.stroke();
+    x.fillStyle = '#fff';
+    x.beginPath(); x.moveTo(104, 198); x.lineTo(112, 224); x.lineTo(120, 198); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(136, 198); x.lineTo(144, 224); x.lineTo(152, 198); x.closePath(); x.fill();
+    var t = new THREE.Texture(c); t.needsUpdate = true;
+    return t;
+  }
+
   // 名字标签（Canvas → Sprite，永远朝向相机）
   function nameTexture(text, accent) {
     var c = document.createElement('canvas'); c.width = 256; c.height = 64;
@@ -152,7 +187,9 @@ window.PlanetIslandGame = (function () {
     group.add(sphere);
 
     if (!FACE_TEX) FACE_TEX = faceTexture();
-    var face = new THREE.Sprite(new THREE.SpriteMaterial({ map: FACE_TEX, transparent: true }));
+    if (isBoss && !BOSS_FACE_TEX) BOSS_FACE_TEX = bossFaceTexture();
+    var ftex = (isBoss && BOSS_FACE_TEX) ? BOSS_FACE_TEX : FACE_TEX;
+    var face = new THREE.Sprite(new THREE.SpriteMaterial({ map: ftex, transparent: true }));
     var fs = R * 1.55;
     face.scale.set(fs, fs, 1);
     face.position.set(0, R * 0.04, R * 0.98);
@@ -297,6 +334,72 @@ window.PlanetIslandGame = (function () {
       else if (p.type === 'mud') { b.vel.x *= 0.4; b.vel.z *= 0.4; }
       else if (p.type === 'speed') { b.vel.x *= 1.7; b.vel.z *= 1.7; }
       break;
+    }
+  }
+
+  // ============ 投石攻击（像超级玛丽丢龟壳，强力击退） ============
+  function clearStones() {
+    for (var i = 0; i < stones.length; i++) { if (stones[i].mesh.parent) stones[i].mesh.parent.remove(stones[i].mesh); }
+    stones = [];
+  }
+  function throwStone() {
+    if (state !== 'playing' || !player || stoneCd > 0) return;
+    stoneCd = 0.45;
+    // 瞄准方向：优先最近的对手；否则用当前滚动方向；否则默认正前方
+    var aim = new THREE.Vector3(0, 0, -1);
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < npcs.length; i++) {
+      var d = player.group.position.distanceTo(npcs[i].group.position);
+      if (d < bestD) { bestD = d; best = npcs[i]; }
+    }
+    if (best && bestD < 60) aim.copy(best.group.position).sub(player.group.position).normalize();
+    else {
+      var hl = Math.hypot(player.vel.x, player.vel.z);
+      if (hl > 0.5) aim.set(player.vel.x / hl, 0, player.vel.z / hl);
+    }
+    var origin = player.group.position.clone().addScaledVector(aim, player.R + 0.6);
+    origin.y = player.group.position.y + player.R * 0.4;
+    var mesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1.2, 0),
+      new THREE.MeshStandardMaterial({ color: 0x9a8c7a, roughness: 1, flatShading: true })
+    );
+    mesh.position.copy(origin);
+    islandGroup.add(mesh);
+    stones.push({ mesh: mesh, vel: aim.clone().multiplyScalar(64), life: 2.4 });
+    sfx('throw');
+  }
+  function updateStones(dt) {
+    for (var i = stones.length - 1; i >= 0; i--) {
+      var s = stones[i];
+      s.vel.y -= 22 * dt;
+      s.mesh.position.addScaledVector(s.vel, dt);
+      s.mesh.rotation.x += dt * 8; s.mesh.rotation.y += dt * 6;
+      s.life -= dt;
+      // 命中检测（只对人机天体，含 BOSS）
+      var hitNpc = null;
+      for (var j = 0; j < npcs.length; j++) {
+        var n = npcs[j];
+        if (n.out || n._dying) continue;
+        if (s.mesh.position.distanceTo(n.group.position) < n.R + 1.3) { hitNpc = n; break; }
+      }
+      if (hitNpc) {
+        var dir = s.mesh.position.clone().sub(hitNpc.group.position); dir.y = 0;
+        var dl = dir.length() || 1; dir.divideScalar(dl);
+        var KNOCK = hitNpc.isBoss ? 36 : 50;   // BOSS 更重，需要更猛
+        hitNpc.vel.x += dir.x * KNOCK;
+        hitNpc.vel.z += dir.z * KNOCK;
+        hitNpc.vel.y = Math.max(hitNpc.vel.y, 12);   // 顺便弹起
+        hitNpc.grounded = false;
+        sfx('smash');
+        if (s.mesh.parent) s.mesh.parent.remove(s.mesh);
+        stones.splice(i, 1);
+        continue;
+      }
+      var r2 = Math.hypot(s.mesh.position.x, s.mesh.position.z);
+      if (s.life <= 0 || s.mesh.position.y < FALL_Y - 4 || r2 > islandR + 30) {
+        if (s.mesh.parent) s.mesh.parent.remove(s.mesh);
+        stones.splice(i, 1);
+      }
     }
   }
 
@@ -559,8 +662,9 @@ window.PlanetIslandGame = (function () {
   }
   // 检测到掉下岛的天体 → 触发慢动作，但不立即结算
   function detectOuts() {
-    if (player && !player._done && player.out) {
-      player.out = false; lives--; updateHearts(); sfx('lifeLost');
+    // 玩家掉岛：用 _outHandled 防止每帧重复扣血（否则会刷出大量黑心并卡死）
+    if (player && !player._done && player.out && !player._outHandled) {
+      player.out = false; player._outHandled = true; lives--; updateHearts(); sfx('lifeLost');
       if (lives <= 0) player._pendingEnd = 'lose';
       else player._respawning = true;
       focus.push(player);
@@ -568,7 +672,7 @@ window.PlanetIslandGame = (function () {
       showHint(player._pendingEnd ? '💥 KO！红心耗尽' : 'KO！掉下岛 -1 ❤', 1.4);
     }
     for (var i = 0; i < npcs.length; i++) {
-      if (npcs[i].out) {
+      if (npcs[i].out && !npcs[i]._dying) {
         npcs[i].out = false; npcs[i]._dying = true;
         focus.push(npcs[i]);
         slowmo = Math.max(slowmo, 1.0);
@@ -586,7 +690,7 @@ window.PlanetIslandGame = (function () {
       if (player._pendingEnd === 'lose') { endGame(false); }
       else if (player._respawning) {
         player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0);
-        player._respawning = false;
+        player._respawning = false; player._outHandled = false;
         showHint('稳住了！继续把对手挤下去！', 1.4);
       }
     }
@@ -597,11 +701,16 @@ window.PlanetIslandGame = (function () {
   }
   function endGame(win) {
     over = true; state = 'over';
-    if (overTitleEl) overTitleEl.textContent = win ? '🎉 胜利！' : '💥 失败';
-    if (overSubEl) overSubEl.textContent = win ? '所有对手（含 BOSS）都被挤下岛啦！' : '红心用完了，再接再厉！';
+    var secs = playStartMs ? ((performance.now() - playStartMs) / 1000) : 0;
+    var tstr = '，坚持了 ' + secs.toFixed(1) + ' 秒';
+    if (overTitleEl) overTitleEl.textContent = win ? '🎉 胜利！' : '💥 被淘汰';
+    if (overSubEl) overSubEl.textContent = win
+      ? ('所有对手（含 BOSS）都被挤下岛啦！' + tstr)
+      : ('红心用完了，再接再厉！' + tstr);
     if (overEl) overEl.style.display = 'flex';
     if (player) player._done = true;
     slowmo = 0; focus = [];
+    if (window.Bgm) window.Bgm.boss(false);
     if (typeof window.recordIslandEvent === 'function') window.recordIslandEvent(win ? 'win' : 'lose');
     sfx(win ? 'levelUp' : 'gameOver');
   }
@@ -609,10 +718,11 @@ window.PlanetIslandGame = (function () {
     if (overEl) overEl.style.display = 'none';
     lives = LIVES; updateHearts();
     npcs.forEach(function (n) { scene.remove(n.group); }); npcs = [];
+    clearStones();
     spawnNPCs();
     if (player) {
       player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0);
-      player.out = false; player._done = false; player._respawning = false; player._pendingEnd = null;
+      player.out = false; player._done = false; player._respawning = false; player._pendingEnd = null; player._outHandled = false;
     }
     slowmo = 0; focus = []; camMode = 'follow';
     over = false;
@@ -715,7 +825,7 @@ window.PlanetIslandGame = (function () {
     }
     updateBossFx(dt);
     if (camShake > 0) camShake = Math.max(0, camShake - dt * 1.2);
-    if (bossIntroT <= 0) state = 'playing';
+    if (bossIntroT <= 0) { state = 'playing'; playStartMs = performance.now(); }
   }
 
   // ============ 主循环 ============
@@ -735,6 +845,7 @@ window.PlanetIslandGame = (function () {
 
     var slow = slowmo > 0;
     var sdt = slow ? dt * 0.32 : dt;   // 慢动作时物理减速
+    if (stoneCd > 0) stoneCd -= dt;
 
     if (state === 'playing') applyPlayerInput(sdt);
     if (player) { stepBeing(player, sdt); if (player.jumpCd > 0) player.jumpCd -= sdt; }
@@ -743,6 +854,7 @@ window.PlanetIslandGame = (function () {
       for (var a = 0; a < npcs.length; a++) collide(player, npcs[a]);
       for (var c = 0; c < npcs.length; c++) for (var d = c + 1; d < npcs.length; d++) collide(npcs[c], npcs[d]);
       detectOuts();
+      updateStones(sdt);
     }
     if (player) rollSphere(player, sdt);
     for (var e = 0; e < npcs.length; e++) rollSphere(npcs[e], sdt);
@@ -792,6 +904,7 @@ window.PlanetIslandGame = (function () {
 
   function beginPlay(body) {
     showSelect(false);
+    clearStones();
     if (player) scene.remove(player.group);
     player = makeBeing(body, '#9be7ff');
     player.group.position.set(0, player.R, 0);
@@ -907,6 +1020,14 @@ window.PlanetIslandGame = (function () {
     });
     if (muteBtn && window.Sfx) muteBtn.textContent = window.Sfx.isMuted() ? '🔇' : '🔊';
 
+    var stoneBtn = $('island-stone');
+    if (stoneBtn) {
+      stoneBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); throwStone(); stoneBtn.classList.add('boosting'); });
+      stoneBtn.addEventListener('pointerup', function () { stoneBtn.classList.remove('boosting'); });
+      stoneBtn.addEventListener('pointerleave', function () { stoneBtn.classList.remove('boosting'); });
+      stoneBtn.addEventListener('pointercancel', function () { stoneBtn.classList.remove('boosting'); });
+    }
+
     var againBtn = $('btn-island-again');
     if (againBtn) againBtn.addEventListener('click', function () { restart(); });
     var menuBtn = $('btn-island-menu');
@@ -946,6 +1067,8 @@ window.PlanetIslandGame = (function () {
     running = false; state = 'idle';
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     boosting = false;
+    clearStones();
+    if (window.Bgm) window.Bgm.boss(false);
   }
 
   return {
@@ -955,8 +1078,12 @@ window.PlanetIslandGame = (function () {
         get player() { return player; },
         get npcs() { return npcs; },
         props: props,
+        get stones() { return stones; },
         get slowmo() { return slowmo; },
-        get camMode() { return camMode; }
+        get camMode() { return camMode; },
+        get lives() { return lives; },
+        get over() { return over; },
+        throwStone: function () { return throwStone(); }
       };
     }
   };
