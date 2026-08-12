@@ -37,6 +37,12 @@
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
   function shuffle(arr) { return arr.slice().sort(() => Math.random() - 0.5); }
 
+  // 解锁音频并开始 BGM（音频引擎统一在 audio.js）
+  function startAudio() {
+    if (window.Sfx) window.Sfx.unlock();
+    if (window.Bgm) window.Bgm.start();
+  }
+
   function hashCode(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) {
@@ -952,6 +958,7 @@
     if (window.ArcadeGame) window.ArcadeGame.stop();
     if (window.PlanetPkGame) window.PlanetPkGame.stop();
     if (window.PlanetIslandGame) window.PlanetIslandGame.stop();
+    if (window.Bgm) window.Bgm.boss(false);   // 离开星球岛，恢复普通 BGM
   }
 
   function cancelPKAnimation() {
@@ -967,6 +974,7 @@
 
   // ========== PK 对战模式 ==========
   function startPK() {
+    startAudio();
     STATE.mode = 'pk';
     STATE.score = 0;
     STATE.combo = 0;
@@ -1044,8 +1052,10 @@
       STATE.maxCombo = Math.max(STATE.maxCombo, STATE.combo);
       STATE.score += 10 + STATE.combo * 5;
       STATE.correctCount++;
+      if (window.Sfx) window.Sfx.correct();
     } else {
       STATE.combo = 0;
+      if (window.Sfx) window.Sfx.wrong();
       $('pk-screen').classList.add('shake');
       setTimeout(function() { $('pk-screen').classList.remove('shake'); }, 350);
     }
@@ -1220,6 +1230,7 @@
   function showGameOver() {
     STATE.mode = 'gameover';
     hideAll();
+    if (window.Sfx) window.Sfx.gameOver();
     $('gameover-screen').style.display = 'flex';
 
     const accuracy = ((STATE.correctCount / STATE.totalRounds) * 100).toFixed(0);
@@ -1255,6 +1266,7 @@
   };
 
   function startExplore() {
+    startAudio();
     STATE.mode = 'explore';
     hideAll();
     $('explore-screen').style.display = 'block';
@@ -1423,6 +1435,7 @@
 
   // ========== 我的星系 ==========
   function startCustom() {
+    startAudio();
     STATE.mode = 'custom';
     hideAll();
     $('custom-screen').style.display = 'block';
@@ -1431,6 +1444,7 @@
 
   // ========== 游戏 Tab（弹球击退星球） ==========
   function startArcade() {
+    startAudio();
     STATE.mode = 'arcade';
     hideAll();
     $('arcade-screen').style.display = 'flex';
@@ -1438,6 +1452,7 @@
   }
 
   function startPlanetPK() {
+    startAudio();
     STATE.mode = 'planetpk';
     hideAll();
     $('planetpk-screen').style.display = 'flex';
@@ -1445,6 +1460,7 @@
   }
 
   function startIsland() {
+    startAudio();
     STATE.mode = 'island';
     hideAll();
     $('island-screen').style.display = 'flex';
@@ -1452,6 +1468,7 @@
   }
 
   function startQStar() {
+    startAudio();
     STATE.mode = 'qstar';
     hideAll();
     $('qstar-screen').style.display = 'flex';
@@ -1459,6 +1476,7 @@
   }
 
   function startCodex() {
+    startAudio();
     STATE.mode = 'codex';
     hideAll();
     $('codex-screen').style.display = 'flex';
@@ -1728,6 +1746,17 @@
         }
       });
     });
+
+    // 全局点击音效（PK 选择按钮由 answer() 播放对/错音，避免重复）
+    var appEl = $('app');
+    if (appEl && appEl.addEventListener) {
+      appEl.addEventListener('click', function (e) {
+        var t = e.target && e.target.closest ? e.target.closest('button, .island-chip, .codex-cell, .qstar-base, .qstar-feat-opt, .custom-card') : null;
+        if (!t) return;
+        if (t.id === 'pk-btn-a' || t.id === 'pk-btn-b') return;
+        if (window.Sfx) window.Sfx.click();
+      }, true);
+    }
 
     showMenu();
   }

@@ -64,74 +64,8 @@ window.ArcadeGame = (function () {
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
   function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 
-  // ============ 音效（Web Audio 合成，无需音频文件） ============
-  const Sfx = (function () {
-    let actx = null;
-    let muted = false;
-    function ensure() {
-      if (!actx) {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return null;
-        try { actx = new AC(); } catch (e) { return null; }
-      }
-      if (actx.state === 'suspended') actx.resume();
-      return actx;
-    }
-    function tone(opt) {
-      const a = ensure(); if (!a || muted) return;
-      const t0 = a.currentTime;
-      const dur = opt.dur ?? 0.15;
-      const vol = opt.vol ?? 0.2;
-      const osc = a.createOscillator();
-      const gain = a.createGain();
-      osc.type = opt.type || 'sine';
-      osc.frequency.setValueAtTime(opt.freq || 440, t0);
-      if (opt.freqEnd) osc.frequency.exponentialRampToValueAtTime(Math.max(1, opt.freqEnd), t0 + dur);
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(vol, t0 + (opt.attack ?? 0.005));
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      osc.connect(gain).connect(a.destination);
-      osc.start(t0); osc.stop(t0 + dur + 0.02);
-    }
-    function noise(opt) {
-      const a = ensure(); if (!a || muted) return;
-      const t0 = a.currentTime;
-      const dur = opt.dur ?? 0.2;
-      const vol = opt.vol ?? 0.3;
-      const len = Math.floor(a.sampleRate * dur);
-      const buf = a.createBuffer(1, len, a.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const src = a.createBufferSource(); src.buffer = buf;
-      const filt = a.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = opt.filterFreq || 1200;
-      const gain = a.createGain();
-      gain.gain.setValueAtTime(vol, t0);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      src.connect(filt).connect(gain).connect(a.destination);
-      src.start(t0); src.stop(t0 + dur);
-    }
-    return {
-      unlock() { ensure(); },
-      shoot() { tone({ freq: 880, freqEnd: 440, type: 'square', dur: 0.06, vol: 0.08 }); },
-      hit() { tone({ freq: 540, freqEnd: 300, type: 'square', dur: 0.08, vol: 0.10 }); },
-      destroy() {
-        noise({ dur: 0.26, vol: 0.32, filterFreq: 1800 });
-        tone({ freq: 200, freqEnd: 60, type: 'sawtooth', dur: 0.26, vol: 0.16 });
-      },
-      lifeLost() { tone({ freq: 220, freqEnd: 70, type: 'sawtooth', dur: 0.42, vol: 0.22 }); },
-      levelUp() {
-        [523, 659, 784, 1046].forEach((f, i) =>
-          setTimeout(() => tone({ freq: f, type: 'triangle', dur: 0.12, vol: 0.15 }), i * 70));
-      },
-      gameOver() {
-        [440, 350, 260, 180].forEach((f, i) =>
-          setTimeout(() => tone({ freq: f, type: 'sawtooth', dur: 0.3, vol: 0.2 }), i * 120));
-      },
-      start() { tone({ freq: 330, freqEnd: 660, type: 'triangle', dur: 0.2, vol: 0.16 }); },
-      toggleMute() { muted = !muted; return muted; },
-      isMuted() { return muted; },
-    };
-  })();
+  // ============ 音效（复用 audio.js 的 window.Sfx 统一引擎）============
+  const Sfx = window.Sfx;
 
   // ============ 真实天体池 ============
   function getArcadePool() {
@@ -786,8 +720,7 @@ window.ArcadeGame = (function () {
     elOver.style.display = 'flex';
   }
 
-  // 暴露音效模块给 planetpk.js 复用（Web Audio 合成，无音频文件）
-  window.Sfx = Sfx;
+  // 音效模块统一由 audio.js 的 window.Sfx 提供（已暴露给 planetpk.js / island.js 复用）
 
   return { init, start, stop };
 })();

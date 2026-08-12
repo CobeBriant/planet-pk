@@ -36,6 +36,13 @@ window.PlanetIslandGame = (function () {
   var lives = LIVES;
   var over = false;
 
+  // BOSS 专属出场特效
+  var bossFx = [];                 // 冲击波 / 粒子
+  var bossIntroT = 0;             // 出场动画倒计时
+  var camShake = 0;               // 镜头抖动强度
+  var currentBoss = null;
+  var bossFlashEl = null, bossBannerEl = null;
+
   // 慢动作回放
   var slowmo = 0, focus = [];
 
@@ -346,12 +353,16 @@ window.PlanetIslandGame = (function () {
   function spawnNPCs() {
     npcs.forEach(function (n) { scene.remove(n.group); });
     npcs = [];
+    // 清理上一次 BOSS 出场特效残留
+    bossFx.forEach(function (f) { if (f.mesh.parent) f.mesh.parent.remove(f.mesh); });
+    bossFx = [];
     var pool = getPool();
     // 大 BOSS 天体（必须挤下去才算赢）
     var bossBody = pool[(Math.random() * pool.length) | 0];
     var boss = makeBeing(bossBody, '#ff4d6d', true);
     boss.group.position.set(rand(-18, 18), boss.R, rand(-18, 18));
     boss.ai.tx = 0; boss.ai.tz = 0; boss.ai.hopCd = rand(3, 6);
+    currentBoss = boss;
     npcs.push(boss);
     // 普通人机天体
     for (var i = 0; i < 4; i++) {
@@ -496,6 +507,21 @@ window.PlanetIslandGame = (function () {
 
   function updateCamera(dt) {
     var k = Math.min(1, dt * 4);
+    // BOSS 出场：聚焦 BOSS + 镜头抖动
+    if (state === 'bossIntro' && currentBoss) {
+      var bp = currentBoss.group.position;
+      var tx = bp.x, ty = bp.y + 16, tz = bp.z + 30;
+      var kb = Math.min(1, dt * 3);
+      camera.position.x += (tx - camera.position.x) * kb;
+      camera.position.y += (ty - camera.position.y) * kb;
+      camera.position.z += (tz - camera.position.z) * kb;
+      if (camShake > 0) {
+        camera.position.x += (Math.random() - 0.5) * camShake * 4;
+        camera.position.y += (Math.random() - 0.5) * camShake * 4;
+      }
+      camera.lookAt(bp.x, bp.y, bp.z);
+      return;
+    }
     // 慢动作：聚焦正在掉下岛的天体
     if (slowmo > 0 && focus.length) {
       var f = focus[0].group.position;
@@ -589,16 +615,124 @@ window.PlanetIslandGame = (function () {
       player.out = false; player._done = false; player._respawning = false; player._pendingEnd = null;
     }
     slowmo = 0; focus = []; camMode = 'follow';
-    over = false; state = 'playing';
+    over = false;
     collisions = 0; updateScore();
     if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
-    showHint('把对手（含 BOSS）全部挤下岛就赢！', 2);
+    triggerBossEntrance();
+  }
+
+  // ============ BOSS 专属出场特效 ============
+  function spawnShockwave(x, z) {
+    var ring = new THREE.Mesh(
+      new THREE.RingGeometry(1, 1.6, 48),
+      new THREE.MeshBasicMaterial({ color: 0xff3344, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.4, z);
+    islandGroup.add(ring);
+    bossFx.push({ type: 'ring', mesh: ring, life: 1.0 });
+  }
+  function spawnBossParticles(x, y, z) {
+    var cols = [0xffd24d, 0xff5a3c, 0xff2d6b, 0xffffff];
+    for (var i = 0; i < 30; i++) {
+      var c = cols[(Math.random() * cols.length) | 0];
+      var m = new THREE.Mesh(
+        new THREE.SphereGeometry(0.7, 8, 8),
+        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 1 })
+      );
+      m.position.set(x, y, z);
+      var a = Math.random() * 6.28, el = rand(0.2, 1.4), sp = rand(8, 22);
+      islandGroup.add(m);
+      bossFx.push({
+        type: 'p', mesh: m,
+        vx: Math.cos(a) * sp * Math.cos(el), vy: Math.sin(el) * sp + 6, vz: Math.sin(a) * sp * Math.cos(el),
+        life: rand(0.7, 1.3), max: 1.3
+      });
+    }
+  }
+  function triggerBossEntrance() {
+    if (!currentBoss) return;
+    var boss = currentBoss;
+    boss._entering = true;
+    state = 'bossIntro';
+    bossIntroT = 2.0;
+    // 从岛下方升起 + 由小变大
+    boss.group.position.set(0, -14, -12);
+    boss.group.scale.set(0.2, 0.2, 0.2);
+    boss.vel.set(0, 0, 0);
+    spawnShockwave(boss.group.position.x, boss.group.position.z);
+    spawnBossParticles(boss.group.position.x, boss.group.position.y + 2, boss.group.position.z);
+    camShake = 0.85;
+    // 全屏红光 + 横幅
+    if (bossFlashEl) {
+      bossFlashEl.style.transition = 'none';
+      bossFlashEl.style.opacity = '0.75';
+      requestAnimationFrame(function () {
+        bossFlashEl.style.transition = 'opacity 1s ease-out';
+        bossFlashEl.style.opacity = '0';
+      });
+    }
+    if (bossBannerEl) {
+      bossBannerEl.textContent = '👑 BOSS 登场！';
+      bossBannerEl.classList.add('show');
+      clearTimeout(triggerBossEntrance._t);
+      triggerBossEntrance._t = setTimeout(function () { if (bossBannerEl) bossBannerEl.classList.remove('show'); }, 1800);
+    }
+    sfx('bossIntro');
+    if (window.Bgm) window.Bgm.boss(true);
+    showHint('BOSS 登场！把它也挤下岛！', 2.2);
+  }
+  function updateBossFx(dt) {
+    for (var i = bossFx.length - 1; i >= 0; i--) {
+      var f = bossFx[i];
+      if (f.type === 'ring') {
+        var s = 1 + (1 - f.life) * 40;
+        f.mesh.scale.set(s, s, 1);
+        f.mesh.material.opacity = f.life * 0.9;
+        f.life -= dt * 1.1;
+      } else {
+        f.vy -= 30 * dt;
+        f.mesh.position.x += f.vx * dt;
+        f.mesh.position.y += f.vy * dt;
+        f.mesh.position.z += f.vz * dt;
+        f.life -= dt;
+        f.mesh.material.opacity = Math.max(0, f.life / f.max);
+      }
+      if (f.life <= 0) { if (f.mesh.parent) f.mesh.parent.remove(f.mesh); bossFx.splice(i, 1); }
+    }
+  }
+  function updateBossIntro(dt) {
+    bossIntroT -= dt;
+    var boss = currentBoss;
+    if (boss) {
+      var t = clamp(1 - bossIntroT / 2.0, 0, 1);
+      var ease = t * t * (3 - 2 * t);          // smoothstep
+      var ty = boss.R;
+      boss.group.position.y = -14 + (ty + 14) * ease;
+      var sc = 0.2 + 0.8 * ease;
+      boss.group.scale.set(sc, sc, sc);
+      boss.group.rotation.y += dt * 2.2;
+      if (t >= 1) { boss.group.scale.set(1, 1, 1); boss._entering = false; }
+    }
+    updateBossFx(dt);
+    if (camShake > 0) camShake = Math.max(0, camShake - dt * 1.2);
+    if (bossIntroT <= 0) state = 'playing';
   }
 
   // ============ 主循环 ============
   function loop(t) {
     if (!running) return;
     var dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
+
+    // BOSS 出场动画：全屏暂停物理，只播放升腾 / 冲击波 / 抖动
+    if (state === 'bossIntro') {
+      updateBossIntro(dt);
+      updateCamera(dt);
+      if (starfield) starfield.rotation.y += dt * 0.02;
+      renderer.render(scene, camera);
+      rafId = requestAnimationFrame(loop);
+      return;
+    }
+
     var slow = slowmo > 0;
     var sdt = slow ? dt * 0.32 : dt;   // 慢动作时物理减速
 
@@ -662,13 +796,14 @@ window.PlanetIslandGame = (function () {
     player = makeBeing(body, '#9be7ff');
     player.group.position.set(0, player.R, 0);
     player._done = false; player._respawning = false; player._pendingEnd = null;
-    state = 'playing'; over = false;
+    over = false;
     slowmo = 0; focus = []; camMode = 'follow';
     lives = LIVES; updateHearts();
     collisions = 0; updateScore();
     if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
-    showHint('点击起跳 · 滑动滚动 · 长按马力冲坡 · 把对手挤下岛！', 2.6);
     if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
+    if (window.Bgm) window.Bgm.start();
+    triggerBossEntrance();
   }
 
   function updateScore() { if (scoreEl) scoreEl.textContent = '碰撞 ' + collisions; }
@@ -704,6 +839,8 @@ window.PlanetIslandGame = (function () {
     overTitleEl = $('island-over-title');
     overSubEl = $('island-over-sub');
     viewBtn = $('island-view');
+    bossFlashEl = $('island-boss-flash');
+    bossBannerEl = $('island-boss-banner');
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 
     canvas.addEventListener('pointerdown', function (e) {
@@ -768,6 +905,7 @@ window.PlanetIslandGame = (function () {
       var m = window.Sfx ? window.Sfx.toggleMute() : false;
       muteBtn.textContent = m ? '🔇' : '🔊';
     });
+    if (muteBtn && window.Sfx) muteBtn.textContent = window.Sfx.isMuted() ? '🔇' : '🔊';
 
     var againBtn = $('btn-island-again');
     if (againBtn) againBtn.addEventListener('click', function () { restart(); });

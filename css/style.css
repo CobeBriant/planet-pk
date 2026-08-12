@@ -1193,6 +1193,38 @@ html, body {
   margin-bottom: 6px;
 }
 
+/* ===== BOSS 专属出场特效 ===== */
+.island-boss-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 22;
+  opacity: 0;
+  background: radial-gradient(circle at center, rgba(255,40,60,0) 28%, rgba(255,28,52,0.55) 100%);
+}
+.island-boss-banner {
+  position: absolute;
+  left: 50%; top: 38%;
+  transform: translate(-50%, -50%) scale(0.6);
+  pointer-events: none;
+  z-index: 24;
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fff;
+  text-shadow: 0 0 14px #ff2d4d, 0 0 26px #ff8a00;
+  padding: 10px 24px;
+  background: rgba(120, 0, 20, 0.55);
+  border: 2px solid #ff5a7a;
+  border-radius: 14px;
+  opacity: 0;
+  transition: transform .35s cubic-bezier(.2,1.6,.4,1), opacity .35s;
+}
+.island-boss-banner.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 /* ===== Q版星仔：捏脸工坊 ===== */
 .qstar-screen {
   position: absolute;
