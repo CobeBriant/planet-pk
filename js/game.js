@@ -918,12 +918,14 @@
     $('custom-screen').style.display = 'none';
     $('arcade-screen').style.display = 'none';
     $('planetpk-screen').style.display = 'none';
+    $('island-screen').style.display = 'none';
     $('gameover-screen').style.display = 'none';
     $('result-overlay').classList.remove('show');
     clearAutoNext();
     cancelPKAnimation();
     if (window.ArcadeGame) window.ArcadeGame.stop();
     if (window.PlanetPkGame) window.PlanetPkGame.stop();
+    if (window.PlanetIslandGame) window.PlanetIslandGame.stop();
   }
 
   function cancelPKAnimation() {
@@ -1414,6 +1416,13 @@
     if (window.PlanetPkGame) window.PlanetPkGame.start();
   }
 
+  function startIsland() {
+    STATE.mode = 'island';
+    hideAll();
+    $('island-screen').style.display = 'flex';
+    if (window.PlanetIslandGame) window.PlanetIslandGame.open();
+  }
+
   function showCustomList() {
     $('custom-list-view').style.display = 'block';
     $('custom-form-view').style.display = 'none';
@@ -1616,6 +1625,7 @@
     $('btn-custom').addEventListener('click', startCustom);
     $('btn-arcade').addEventListener('click', startArcade);
     $('btn-planetpk').addEventListener('click', startPlanetPK);
+    $('btn-island').addEventListener('click', startIsland);
 
     $('pk-btn-a').addEventListener('click', function() { answer('a'); });
     $('pk-btn-b').addEventListener('click', function() { answer('b'); });
@@ -1636,6 +1646,7 @@
     $('btn-back-custom').addEventListener('click', showMenu);
     $('btn-back-arcade').addEventListener('click', showMenu);
     $('btn-back-planetpk').addEventListener('click', showMenu);
+    $('btn-back-island').addEventListener('click', showMenu);
 
     // 游戏 Tab 内结算面板
     $('arcade-replay').addEventListener('click', startArcade);

@@ -1044,3 +1044,118 @@ html, body {
   background: rgba(0, 0, 0, 0.88);
 }
 
+/* ===== 星球岛（3D） ===== */
+.island-screen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: #03020c;
+  overflow: hidden;
+}
+.island-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#island-canvas {
+  width: 100%; height: 100%;
+  display: block;
+  touch-action: none;
+}
+.island-select {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  background: rgba(2, 4, 15, 0.82);
+  backdrop-filter: blur(3px);
+  overflow-y: auto;
+}
+.island-select-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #aef3ff;
+  text-shadow: 0 0 16px rgba(0, 200, 255, 0.6);
+}
+.island-select-sub {
+  font-size: 13px;
+  color: #9fb6d8;
+  max-width: 340px;
+  text-align: center;
+  line-height: 1.5;
+}
+.island-select-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: min(92%, 430px);
+  margin-top: 6px;
+}
+.island-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 4px;
+  background: rgba(18, 28, 56, 0.6);
+  border: 1px solid rgba(120, 220, 255, 0.25);
+  border-radius: 12px;
+  color: #cfe6ff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+}
+.island-chip:active { transform: scale(0.95); border-color: #00e5ff; }
+.island-chip canvas {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: #000;
+  display: block;
+}
+.island-chip .island-chip-r { font-size: 10px; color: #8fa6c8; }
+.island-hint {
+  position: absolute;
+  top: 12px; left: 50%;
+  transform: translateX(-50%);
+  color: #bfe;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 6px 14px;
+  border-radius: 10px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 7;
+  text-align: center;
+  max-width: 90%;
+}
+.island-boost {
+  position: absolute;
+  right: 18px; bottom: 24px;
+  width: 78px; height: 78px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #ffe26b, #ff7a00);
+  color: #3a1500;
+  font-weight: 800;
+  font-size: 17px;
+  border: none;
+  box-shadow: 0 0 20px rgba(255, 150, 0, 0.6);
+  z-index: 7;
+  user-select: none;
+  touch-action: none;
+  cursor: pointer;
+}
+.island-boost:active { transform: scale(0.93); }
+.island-boost.boosting {
+  box-shadow: 0 0 30px rgba(255, 200, 0, 0.95);
+  background: radial-gradient(circle at 32% 30%, #fff6b0, #ff9a00);
+}
+

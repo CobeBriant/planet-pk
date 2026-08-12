@@ -40,6 +40,10 @@
         <span class="icon">⚔</span>
         星球PK
       </button>
+      <button class="menu-btn menu-btn-wide" id="btn-island">
+        <span class="icon">🪐</span>
+        星球岛
+      </button>
     </div>
   </div>
 
@@ -274,6 +278,35 @@
     </div>
   </div>
 
+  <!-- ===== 星球岛（3D 拟人星球乐园） ===== -->
+  <div class="island-screen" id="island-screen" style="display:none;">
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-island">← 返回</button>
+      <div class="score-box">
+        <div class="score-label">星球岛</div>
+        <div class="score-value" id="island-score" style="font-size:14px;">碰撞 0</div>
+      </div>
+      <button class="arcade-mute" id="island-mute" title="音效开关">🔊</button>
+    </div>
+
+    <div class="island-stage">
+      <canvas id="island-canvas"></canvas>
+
+      <!-- 选星球浮层 -->
+      <div class="island-select" id="island-select">
+        <div class="island-select-title">选择你的星球</div>
+        <div class="island-select-sub">按真实半径适配大小 · 点击球体起跳，滑动屏幕滚动，长按「马力」冲坡</div>
+        <div class="island-select-grid" id="island-select-grid"></div>
+      </div>
+
+      <!-- 操作提示 -->
+      <div class="island-hint" id="island-hint"></div>
+
+      <!-- 马力按钮 -->
+      <button class="island-boost" id="island-boost">马力</button>
+    </div>
+  </div>
+
   <!-- ===== 游戏结束 ===== -->
   <div class="gameover-screen" id="gameover-screen" style="display:none;">
     <div class="gameover-title" id="gameover-title">游戏结束</div>
@@ -291,5 +324,7 @@
 <script src="js/arcade.js"></script>
 <script src="js/game.js"></script>
 <script src="js/planetpk.js"></script>
+<script src="assets/vendor/three.min.js"></script>
+<script src="js/island.js"></script>
 </body>
 </html>
