@@ -48,6 +48,10 @@
         <span class="icon">🧸</span>
         Q版星仔
       </button>
+      <button class="menu-btn" id="btn-codex">
+        <span class="icon">📖</span>
+        图鉴
+      </button>
     </div>
   </div>
 
@@ -291,6 +295,7 @@
         <div class="score-value" id="island-score" style="font-size:14px;">碰撞 0</div>
       </div>
       <div class="island-hearts" id="island-hearts">❤❤❤</div>
+      <button class="arcade-mute" id="island-view" title="自由旋转视角">🔄 视角</button>
       <button class="arcade-mute" id="island-mute" title="音效开关">🔊</button>
     </div>
 
@@ -300,7 +305,7 @@
       <!-- 选星球浮层 -->
       <div class="island-select" id="island-select">
         <div class="island-select-title">选择你的星球</div>
-        <div class="island-select-sub">按真实半径适配大小 · 把对手全部挤下岛就赢！</div>
+        <div class="island-select-sub">按真实半径适配大小 · 把对手（含 BOSS）全部挤下岛就赢！<br>岛上有 蹦床/弹簧(弹飞) · 泥沼(减速) · 加速带</div>
         <div class="island-select-grid" id="island-select-grid"></div>
       </div>
 
@@ -319,6 +324,30 @@
           <button class="menu-btn" id="btn-island-menu" style="width:140px;font-size:16px;">返回菜单</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== 图鉴 / 成就 ===== -->
+  <div class="codex-screen" id="codex-screen" style="display:none;">
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-codex">← 返回</button>
+      <div class="score-box">
+        <div class="score-label">图鉴 · 成就</div>
+        <div class="score-value" id="codex-progress" style="font-size:14px;">0 / 0</div>
+      </div>
+    </div>
+    <div class="codex-wrap">
+      <div class="codex-stats" id="codex-stats"></div>
+      <div class="codex-ach" id="codex-ach"></div>
+      <div class="codex-section-title">全部天体（点击看大图）</div>
+      <div class="codex-grid" id="codex-grid"></div>
+    </div>
+    <div class="codex-detail" id="codex-detail" style="display:none;">
+      <img class="codex-detail-img" id="codex-detail-img" alt="">
+      <div class="codex-detail-name" id="codex-detail-name"></div>
+      <div class="codex-detail-meta" id="codex-detail-meta"></div>
+      <div class="codex-detail-desc" id="codex-detail-desc"></div>
+      <button class="menu-btn" id="codex-detail-close" style="width:140px;font-size:15px;margin-top:10px;">关闭</button>
     </div>
   </div>
 
@@ -344,8 +373,16 @@
       <div class="qstar-section-title">① 选择基础星体</div>
       <div class="qstar-base-picker" id="qstar-base-picker"></div>
 
-      <div class="qstar-section-title">② 捏脸（头发 / 眉毛 / 眼睛 / 鼻子 / 嘴巴）</div>
+      <div class="qstar-section-title">② 捏脸（头发 / 眉毛 / 眼睛 / 墨镜 / 鼻子 / 嘴巴 / 帽子）</div>
       <div class="qstar-feats" id="qstar-feats"></div>
+
+      <div class="qstar-section-title">③ 预览微调</div>
+      <div class="qstar-preview-ctrl">
+        <span>缩放</span>
+        <input type="range" id="qstar-scale" min="70" max="140" value="100">
+        <span>旋转</span>
+        <input type="range" id="qstar-rot" min="-30" max="30" value="0">
+      </div>
 
       <button class="qstar-save" id="qstar-save">保存到星球岛</button>
 
@@ -376,5 +413,6 @@
 <script src="assets/vendor/three.min.js"></script>
 <script src="js/island.js"></script>
 <script src="js/qstar.js"></script>
+<script src="js/codex.js"></script>
 </body>
 </html>

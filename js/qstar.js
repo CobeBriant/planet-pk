@@ -21,10 +21,15 @@ window.PlanetQStar = (function () {
     { key: 'hair',  label: '头发', opts: ['无', '刺猬', '波波', '呆毛'] },
     { key: 'brows', label: '眉毛', opts: ['无', '圆眉', '细眉', '怒眉'] },
     { key: 'eyes',  label: '眼睛', opts: ['大眼', '微笑', '星星', '眨眼', '闭眼'] },
+    { key: 'glasses', label: '墨镜', opts: ['无', '圆墨镜', '方框墨镜'] },
     { key: 'nose',  label: '鼻子', opts: ['无', '点鼻', '线鼻'] },
-    { key: 'mouth', label: '嘴巴', opts: ['微笑', '张嘴', '咧嘴', 'O嘴', '猫嘴'] }
+    { key: 'mouth', label: '嘴巴', opts: ['微笑', '张嘴', '咧嘴', 'O嘴', '猫嘴'] },
+    { key: 'hat',   label: '帽子', opts: ['无', '礼帽', '王冠', '小丑帽', '牛仔帽'] }
   ];
-  var DEFAULT_FACE = { hair: 1, brows: 3, eyes: 0, nose: 1, mouth: 0 };
+  var DEFAULT_FACE = { hair: 1, brows: 3, eyes: 0, glasses: 0, nose: 1, mouth: 0, hat: 0 };
+
+  // 预览缩放 / 旋转
+  var previewScale = 1, previewRot = 0;
 
   // ---------- 状态 ----------
   var inited = false;
@@ -45,7 +50,7 @@ window.PlanetQStar = (function () {
     bg.addColorStop(0, '#1a2348');
     bg.addColorStop(1, '#070b1c');
     ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillRect(-ctx.canvas.width, -ctx.canvas.height, ctx.canvas.width * 3, ctx.canvas.height * 3);
 
     // 星球底图
     ctx.save();
@@ -73,8 +78,10 @@ window.PlanetQStar = (function () {
     drawFeature(ctx, 'hair', fc.hair, cx, cy, R);
     drawFeature(ctx, 'brows', fc.brows, cx, cy, R);
     drawFeature(ctx, 'eyes', fc.eyes, cx, cy, R);
+    drawFeature(ctx, 'glasses', fc.glasses, cx, cy, R);
     drawFeature(ctx, 'nose', fc.nose, cx, cy, R);
     drawFeature(ctx, 'mouth', fc.mouth, cx, cy, R);
+    drawFeature(ctx, 'hat', fc.hat, cx, cy, R);
   }
 
   function drawFeature(ctx, cat, idx, cx, cy, R) {
@@ -163,6 +170,23 @@ window.PlanetQStar = (function () {
           ctx.beginPath(); ctx.arc(ex5, eyeY - R * 0.02, eyeR * 0.7, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
         }
       }
+    } else if (cat === 'glasses') {
+      if (idx === 1) { // 圆墨镜
+        ctx.fillStyle = 'rgba(20,20,30,0.85)';
+        for (var s6 = -1; s6 <= 1; s6 += 2) {
+          ctx.beginPath(); ctx.ellipse(cx + s6 * eyeDX, eyeY, eyeR * 1.15, eyeR * 1.1, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(20,20,30,0.85)'; ctx.lineWidth = Math.max(2, R * 0.04);
+        ctx.beginPath(); ctx.moveTo(cx - eyeDX + eyeR, eyeY); ctx.lineTo(cx + eyeDX - eyeR, eyeY); ctx.stroke();
+      } else if (idx === 2) { // 方框墨镜
+        ctx.fillStyle = 'rgba(20,20,30,0.85)';
+        for (var s7 = -1; s7 <= 1; s7 += 2) {
+          var gx = cx + s7 * eyeDX;
+          roundRect(ctx, gx - eyeR * 1.2, eyeY - eyeR * 0.9, eyeR * 2.4, eyeR * 1.8, eyeR * 0.4); ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(20,20,30,0.85)'; ctx.lineWidth = Math.max(2, R * 0.04);
+        ctx.beginPath(); ctx.moveTo(cx - eyeDX + eyeR, eyeY); ctx.lineTo(cx + eyeDX - eyeR, eyeY); ctx.stroke();
+      }
     } else if (cat === 'nose') {
       var ny = cy + R * 0.2;
       ctx.fillStyle = 'rgba(20,16,24,0.75)';
@@ -192,8 +216,59 @@ window.PlanetQStar = (function () {
         ctx.beginPath(); ctx.arc(cx - mw * 0.28, my, mw * 0.26, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
         ctx.beginPath(); ctx.arc(cx + mw * 0.28, my, mw * 0.26, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
       }
+    } else if (cat === 'hat') {
+      var hy = cy - R * 0.92;   // 头顶附近
+      if (idx === 1) { // 礼帽
+        ctx.fillStyle = '#15151f';
+        ctx.fillRect(cx - R * 0.95, hy, R * 1.9, R * 0.12);          // 帽檐
+        ctx.fillRect(cx - R * 0.5, hy - R * 0.7, R * 1.0, R * 0.72); // 帽筒
+        ctx.fillStyle = '#c0392b';
+        ctx.fillRect(cx - R * 0.5, hy - R * 0.12, R * 1.0, R * 0.12); // 红带
+      } else if (idx === 2) { // 王冠
+        ctx.fillStyle = '#ffd24d';
+        ctx.beginPath();
+        ctx.moveTo(cx - R * 0.85, hy);
+        ctx.lineTo(cx - R * 0.85, hy - R * 0.45);
+        ctx.lineTo(cx - R * 0.42, hy - R * 0.12);
+        ctx.lineTo(cx, hy - R * 0.55);
+        ctx.lineTo(cx + R * 0.42, hy - R * 0.12);
+        ctx.lineTo(cx + R * 0.85, hy - R * 0.45);
+        ctx.lineTo(cx + R * 0.85, hy);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ff4d6d';
+        ctx.beginPath(); ctx.arc(cx, hy - R * 0.2, R * 0.1, 0, 6.28); ctx.fill();
+      } else if (idx === 3) { // 小丑帽
+        ctx.fillStyle = '#5b6cff';
+        ctx.beginPath();
+        ctx.moveTo(cx - R * 0.7, hy);
+        ctx.lineTo(cx + R * 0.7, hy);
+        ctx.lineTo(cx, hy - R * 1.05);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ff4d6d';
+        ctx.beginPath(); ctx.arc(cx, hy - R * 1.05, R * 0.16, 0, 6.28); ctx.fill();
+        ctx.fillStyle = '#ffe24d';
+        for (var d = -1; d <= 1; d += 2) { ctx.beginPath(); ctx.arc(cx + d * R * 0.4, hy - R * 0.2, R * 0.07, 0, 6.28); ctx.fill(); }
+      } else if (idx === 4) { // 牛仔帽
+        ctx.fillStyle = '#a9712f';
+        ctx.beginPath(); ctx.ellipse(cx, hy + R * 0.05, R * 1.05, R * 0.3, 0, 0, 6.28); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx - R * 0.55, hy + R * 0.05);
+        ctx.quadraticCurveTo(cx - R * 0.6, hy - R * 0.55, cx, hy - R * 0.6);
+        ctx.quadraticCurveTo(cx + R * 0.6, hy - R * 0.55, cx + R * 0.55, hy + R * 0.05);
+        ctx.closePath(); ctx.fill();
+      }
     }
     ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   function drawStar(ctx, x, y, r) {
@@ -276,7 +351,16 @@ window.PlanetQStar = (function () {
 
   function renderPreview() {
     if (!currentBase) return;
-    drawComposite(preview.getContext('2d'), currentBase, face, 180, 200, 120);
+    var c = preview.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, preview.width, preview.height);
+    c.save();
+    c.translate(preview.width / 2, preview.height / 2);
+    c.rotate(previewRot);
+    c.scale(previewScale, previewScale);
+    c.translate(-preview.width / 2, -preview.height / 2);
+    drawComposite(c, currentBase, face, 180, 200, 120);
+    c.restore();
   }
 
   function renderList() {
@@ -352,9 +436,12 @@ window.PlanetQStar = (function () {
     saveBtn = $('qstar-save');
     listEl = $('qstar-list');
     toastEl = $('qstar-toast');
+    var scaleEl = $('qstar-scale'), rotEl = $('qstar-rot');
     buildBasePicker();
     buildFeats();
     saveBtn.addEventListener('click', doSave);
+    if (scaleEl) scaleEl.addEventListener('input', function () { previewScale = (+scaleEl.value) / 100; renderPreview(); });
+    if (rotEl) rotEl.addEventListener('input', function () { previewRot = (+rotEl.value) * Math.PI / 180; renderPreview(); });
     inited = true;
   }
 

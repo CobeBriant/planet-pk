@@ -944,6 +944,7 @@
     $('planetpk-screen').style.display = 'none';
     $('island-screen').style.display = 'none';
     $('qstar-screen').style.display = 'none';
+    $('codex-screen').style.display = 'none';
     $('gameover-screen').style.display = 'none';
     $('result-overlay').classList.remove('show');
     clearAutoNext();
@@ -1048,6 +1049,7 @@
       $('pk-screen').classList.add('shake');
       setTimeout(function() { $('pk-screen').classList.remove('shake'); }, 350);
     }
+    if (window.recordPKEvent) window.recordPKEvent(isCorrect ? 'win' : 'lose');
     updateHUD();
 
     playPKAnimation(correctSide, isCorrect);
@@ -1350,6 +1352,7 @@
   function showExploreInfo() {
     const data = exploreState.sortedData[exploreState.index];
     if (!data) return;
+    if (window.AppStats) window.AppStats.markViewed(data.id);
     const typeMap = {
       planet: '行星',
       dwarf: '矮行星',
@@ -1453,6 +1456,13 @@
     hideAll();
     $('qstar-screen').style.display = 'flex';
     if (window.PlanetQStar) window.PlanetQStar.open();
+  }
+
+  function startCodex() {
+    STATE.mode = 'codex';
+    hideAll();
+    $('codex-screen').style.display = 'flex';
+    if (window.PlanetCodex) window.PlanetCodex.open();
   }
 
   function showCustomList() {
@@ -1659,6 +1669,7 @@
     $('btn-planetpk').addEventListener('click', startPlanetPK);
     $('btn-island').addEventListener('click', startIsland);
     $('btn-qstar').addEventListener('click', startQStar);
+    $('btn-codex').addEventListener('click', startCodex);
 
     $('pk-btn-a').addEventListener('click', function() { answer('a'); });
     $('pk-btn-b').addEventListener('click', function() { answer('b'); });
@@ -1681,6 +1692,7 @@
     $('btn-back-planetpk').addEventListener('click', showMenu);
     $('btn-back-island').addEventListener('click', showMenu);
     $('btn-back-qstar').addEventListener('click', showMenu);
+    $('btn-back-codex').addEventListener('click', showMenu);
 
     // 游戏 Tab 内结算面板
     $('arcade-replay').addEventListener('click', startArcade);

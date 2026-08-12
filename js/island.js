@@ -19,9 +19,10 @@ window.PlanetIslandGame = (function () {
 
   // ---------- DOM ----------
   var canvas, selectEl, gridEl, hintEl, boostBtn, muteBtn, scoreEl;
-  var heartsEl, overEl, overTitleEl, overSubEl;
+  var heartsEl, overEl, overTitleEl, overSubEl, viewBtn;
   var renderer, scene, camera;
   var starfield, islandGroup, ramps = [];
+  var props = [];                  // 道具 / 陷阱
   var player = null, npcs = [];
   var rafId = null, running = false, lastT = 0;
   var state = 'idle';            // idle | select | playing
@@ -34,6 +35,15 @@ window.PlanetIslandGame = (function () {
   var LIVES = 3;                   // 玩家红心数
   var lives = LIVES;
   var over = false;
+
+  // 慢动作回放
+  var slowmo = 0, focus = [];
+
+  // 自由旋转视角（orbit）
+  var camMode = 'follow';          // 'follow' | 'orbit'
+  var camAz = 0, camEl = 0.62, camDist = 58;
+  var pointers = {};               // 多点触控
+  var orbitPinchLast = 0;
 
   // 物理参数（手感已调：跳更高 / 马力更猛 / 摩擦保留）
   var GRAV = 30, JUMP = 19, ACCEL = 52, BOOST_MULT = 2.6;
@@ -124,8 +134,8 @@ window.PlanetIslandGame = (function () {
   }
 
   // ============ 生成「天体」===========
-  function makeBeing(body, labelColor) {
-    var R = displayRadius(body);
+  function makeBeing(body, labelColor, isBoss) {
+    var R = isBoss ? 6.2 : displayRadius(body);
     var group = new THREE.Group();
     var tex = bodyTexture(body);
     var mat = tex
@@ -143,7 +153,8 @@ window.PlanetIslandGame = (function () {
     if (!(body.customImage)) group.add(face);
 
     // 名字标签（悬在球体上方，始终朝向相机）
-    var label = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTexture(body.name, labelColor || '#ffd24d'), transparent: true, depthTest: false }));
+    var labelText = (isBoss ? '👑BOSS ' : '') + body.name;
+    var label = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTexture(labelText, labelColor || '#ffd24d'), transparent: true, depthTest: false }));
     var lw = R * 4.2;
     label.scale.set(lw, lw * 0.25, 1);
     label.position.set(0, R * 1.55, 0);
@@ -152,8 +163,8 @@ window.PlanetIslandGame = (function () {
 
     scene.add(group);
     return {
-      group: group, sphere: sphere, label: label, R: R, body: body, mass: massFactor(body),
-      vel: new THREE.Vector3(), grounded: false, jumpCd: 0, out: false,
+      group: group, sphere: sphere, label: label, R: R, body: body, mass: isBoss ? 9 : massFactor(body),
+      isBoss: !!isBoss, vel: new THREE.Vector3(), grounded: false, jumpCd: 0, out: false,
       ai: { tx: rand(-30, 30), tz: rand(-30, 30), hopCd: rand(1, 4), seek: false, dash: 0, dashTx: 0, dashTz: 0 }
     };
   }
@@ -221,6 +232,67 @@ window.PlanetIslandGame = (function () {
     return g;
   }
 
+  // ============ 道具 / 陷阱 ============
+  // type: trampoline(大弹) / spring(中弹) / mud(减速) / speed(加速带)
+  function makeProp(type, x, z, r) {
+    var color, h = 0.4;
+    if (type === 'trampoline') color = 0x33ff99;
+    else if (type === 'spring') color = 0x66ddff;
+    else if (type === 'mud') color = 0x8a5a2b;
+    else color = 0xffe24d; // speed
+    var disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(r, r, h, 32),
+      new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: type === 'mud' ? 0.05 : 0.4, roughness: 0.6 })
+    );
+    disc.position.set(x, h / 2, z);
+    islandGroup.add(disc);
+    if (type === 'trampoline' || type === 'spring') {
+      // 弹床中心一个发光圈，提示可弹
+      var ring = new THREE.Mesh(
+        new THREE.TorusGeometry(r * 0.6, 0.18, 8, 28),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      ring.rotation.x = Math.PI / 2; ring.position.set(x, h + 0.05, z); islandGroup.add(ring);
+    }
+    if (type === 'speed') {
+      // 加速带画个箭头
+      var arrow = new THREE.Mesh(
+        new THREE.ConeGeometry(r * 0.4, r * 0.7, 4),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      arrow.rotation.x = Math.PI / 2; arrow.position.set(x, h + 0.2, z); islandGroup.add(arrow);
+    }
+    props.push({ type: type, x: x, z: z, r: r });
+  }
+  function buildProps() {
+    props = [];
+    // 蹦床 ×2
+    makeProp('trampoline', islandR * 0.5, -islandR * 0.2, 7);
+    makeProp('trampoline', -islandR * 0.45, islandR * 0.35, 7);
+    // 弹簧坡 ×2
+    makeProp('spring', islandR * 0.15, islandR * 0.55, 5.5);
+    makeProp('spring', -islandR * 0.6, -islandR * 0.1, 5.5);
+    // 减速泥沼 ×2
+    makeProp('mud', islandR * 0.1, -islandR * 0.55, 8);
+    makeProp('mud', -islandR * 0.2, islandR * 0.1, 8);
+    // 加速带 ×2
+    makeProp('speed', islandR * 0.62, islandR * 0.15, 5);
+    makeProp('speed', -islandR * 0.05, -islandR * 0.35, 5);
+  }
+  function applyProps(b) {
+    if (!b.grounded) return;
+    for (var i = 0; i < props.length; i++) {
+      var p = props[i];
+      var dx = b.group.position.x - p.x, dz = b.group.position.z - p.z;
+      if (dx * dx + dz * dz > p.r * p.r) continue;
+      if (p.type === 'trampoline') { b.vel.y = JUMP * 2.3; b.grounded = false; sfx('start'); }
+      else if (p.type === 'spring') { b.vel.y = JUMP * 1.6; b.grounded = false; sfx('start'); }
+      else if (p.type === 'mud') { b.vel.x *= 0.4; b.vel.z *= 0.4; }
+      else if (p.type === 'speed') { b.vel.x *= 1.7; b.vel.z *= 1.7; }
+      break;
+    }
+  }
+
   function buildScene() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x03020c);
@@ -267,6 +339,7 @@ window.PlanetIslandGame = (function () {
     addRamp(0, islandR * 0.16, islandR * 0.58, 20);
     addRamp(Math.PI * 0.66, islandR * 0.15, islandR * 0.58, 18);
     addRamp(-Math.PI * 0.66, islandR * 0.15, islandR * 0.58, 18);
+    buildProps();
   }
 
   // ============ NPC ============
@@ -274,7 +347,14 @@ window.PlanetIslandGame = (function () {
     npcs.forEach(function (n) { scene.remove(n.group); });
     npcs = [];
     var pool = getPool();
-    for (var i = 0; i < 5; i++) {
+    // 大 BOSS 天体（必须挤下去才算赢）
+    var bossBody = pool[(Math.random() * pool.length) | 0];
+    var boss = makeBeing(bossBody, '#ff4d6d', true);
+    boss.group.position.set(rand(-18, 18), boss.R, rand(-18, 18));
+    boss.ai.tx = 0; boss.ai.tz = 0; boss.ai.hopCd = rand(3, 6);
+    npcs.push(boss);
+    // 普通人机天体
+    for (var i = 0; i < 4; i++) {
       var b = pool[(Math.random() * pool.length) | 0];
       var nb = makeBeing(b, '#ffd24d');
       var a = rand(0, 6.28), rr = rand(10, islandR * 0.8);
@@ -303,6 +383,7 @@ window.PlanetIslandGame = (function () {
     }
     // 掉下岛
     if (b.group.position.y < FALL_Y) b.out = true;
+    else applyProps(b);
   }
 
   function rollSphere(b, dt) {
@@ -414,13 +495,35 @@ window.PlanetIslandGame = (function () {
   }
 
   function updateCamera(dt) {
+    var k = Math.min(1, dt * 4);
+    // 慢动作：聚焦正在掉下岛的天体
+    if (slowmo > 0 && focus.length) {
+      var f = focus[0].group.position;
+      var tx = f.x, ty = f.y + 14, tz = f.z + 28;
+      camera.position.x += (tx - camera.position.x) * k;
+      camera.position.y += (ty - camera.position.y) * k;
+      camera.position.z += (tz - camera.position.z) * k;
+      camera.lookAt(f.x, f.y, f.z);
+      return;
+    }
+    // 自由旋转视角
+    if (camMode === 'orbit') {
+      var tgt = player ? player.group.position : new THREE.Vector3(0, 2, 0);
+      var cx = tgt.x + camDist * Math.cos(camEl) * Math.sin(camAz);
+      var cy = tgt.y + camDist * Math.sin(camEl);
+      var cz = tgt.z + camDist * Math.cos(camEl) * Math.cos(camAz);
+      camera.position.x += (cx - camera.position.x) * Math.min(1, dt * 8);
+      camera.position.y += (cy - camera.position.y) * Math.min(1, dt * 8);
+      camera.position.z += (cz - camera.position.z) * Math.min(1, dt * 8);
+      camera.lookAt(tgt.x, tgt.y + 4, tgt.z);
+      return;
+    }
     if (!player) { camera.lookAt(0, 2, 0); return; }
     var p = player.group.position;
-    var tx = p.x, ty = p.y + 24, tz = p.z + 46;
-    var k = Math.min(1, dt * 4);
-    camera.position.x += (tx - camera.position.x) * k;
-    camera.position.y += (ty - camera.position.y) * k;
-    camera.position.z += (tz - camera.position.z) * k;
+    var px = p.x, py = p.y + 24, pz = p.z + 46;
+    camera.position.x += (px - camera.position.x) * k;
+    camera.position.y += (py - camera.position.y) * k;
+    camera.position.z += (pz - camera.position.z) * k;
     camera.lookAt(p.x, p.y + 3, p.z);
   }
 
@@ -428,28 +531,52 @@ window.PlanetIslandGame = (function () {
   function updateHearts() {
     if (heartsEl) heartsEl.textContent = '❤'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, LIVES - lives));
   }
-  function handleOuts() {
-    if (player && player.out) {
+  // 检测到掉下岛的天体 → 触发慢动作，但不立即结算
+  function detectOuts() {
+    if (player && !player._done && player.out) {
       player.out = false; lives--; updateHearts(); sfx('lifeLost');
-      if (lives <= 0) { endGame(false); return; }
-      player.group.position.set(0, player.R, 0);
-      player.vel.set(0, 0, 0);
-      showHint('掉下岛了！-1 ❤', 1.6);
+      if (lives <= 0) player._pendingEnd = 'lose';
+      else player._respawning = true;
+      focus.push(player);
+      slowmo = Math.max(slowmo, 1.2);
+      showHint(player._pendingEnd ? '💥 KO！红心耗尽' : 'KO！掉下岛 -1 ❤', 1.4);
     }
-    for (var i = npcs.length - 1; i >= 0; i--) {
+    for (var i = 0; i < npcs.length; i++) {
       if (npcs[i].out) {
-        scene.remove(npcs[i].group);
-        npcs.splice(i, 1);
+        npcs[i].out = false; npcs[i]._dying = true;
+        focus.push(npcs[i]);
+        slowmo = Math.max(slowmo, 1.0);
         sfx('hit');
+        if (typeof window.recordIslandEvent === 'function') window.recordIslandEvent('ko');
       }
     }
-    if (npcs.length === 0) endGame(true);
+  }
+  // 慢动作结束后结算
+  function resolveOuts() {
+    for (var i = npcs.length - 1; i >= 0; i--) {
+      if (npcs[i]._dying) { scene.remove(npcs[i].group); npcs.splice(i, 1); }
+    }
+    if (player) {
+      if (player._pendingEnd === 'lose') { endGame(false); }
+      else if (player._respawning) {
+        player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0);
+        player._respawning = false;
+        showHint('稳住了！继续把对手挤下去！', 1.4);
+      }
+    }
+    if (npcs.length === 0 && !over) {
+      endGame(true);
+    }
+    focus = [];
   }
   function endGame(win) {
     over = true; state = 'over';
     if (overTitleEl) overTitleEl.textContent = win ? '🎉 胜利！' : '💥 失败';
-    if (overSubEl) overSubEl.textContent = win ? '所有对手都被挤下岛啦！' : '红心用完了，再接再厉！';
+    if (overSubEl) overSubEl.textContent = win ? '所有对手（含 BOSS）都被挤下岛啦！' : '红心用完了，再接再厉！';
     if (overEl) overEl.style.display = 'flex';
+    if (player) player._done = true;
+    slowmo = 0; focus = [];
+    if (typeof window.recordIslandEvent === 'function') window.recordIslandEvent(win ? 'win' : 'lose');
     sfx(win ? 'levelUp' : 'gameOver');
   }
   function restart() {
@@ -457,29 +584,41 @@ window.PlanetIslandGame = (function () {
     lives = LIVES; updateHearts();
     npcs.forEach(function (n) { scene.remove(n.group); }); npcs = [];
     spawnNPCs();
-    if (player) { player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0); player.out = false; }
+    if (player) {
+      player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0);
+      player.out = false; player._done = false; player._respawning = false; player._pendingEnd = null;
+    }
+    slowmo = 0; focus = []; camMode = 'follow';
     over = false; state = 'playing';
     collisions = 0; updateScore();
-    showHint('把对手全部挤下岛就赢！', 2);
+    if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
+    showHint('把对手（含 BOSS）全部挤下岛就赢！', 2);
   }
 
   // ============ 主循环 ============
   function loop(t) {
     if (!running) return;
     var dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
+    var slow = slowmo > 0;
+    var sdt = slow ? dt * 0.32 : dt;   // 慢动作时物理减速
 
-    if (state === 'playing') applyPlayerInput(dt);
-    if (player) { stepBeing(player, dt); if (player.jumpCd > 0) player.jumpCd -= dt; }
-    for (var i = 0; i < npcs.length; i++) { stepNPC(npcs[i], dt); stepBeing(npcs[i], dt); }
+    if (state === 'playing') applyPlayerInput(sdt);
+    if (player) { stepBeing(player, sdt); if (player.jumpCd > 0) player.jumpCd -= sdt; }
+    for (var i = 0; i < npcs.length; i++) { stepNPC(npcs[i], sdt); stepBeing(npcs[i], sdt); }
     if (state === 'playing') {
       for (var a = 0; a < npcs.length; a++) collide(player, npcs[a]);
       for (var c = 0; c < npcs.length; c++) for (var d = c + 1; d < npcs.length; d++) collide(npcs[c], npcs[d]);
-      handleOuts();
+      detectOuts();
     }
-    if (player) rollSphere(player, dt);
-    for (var e = 0; e < npcs.length; e++) rollSphere(npcs[e], dt);
-    updateCamera(dt);
+    if (player) rollSphere(player, sdt);
+    for (var e = 0; e < npcs.length; e++) rollSphere(npcs[e], sdt);
+    updateCamera(slow ? dt : dt);
     if (starfield) starfield.rotation.y += dt * 0.02;
+
+    if (slowmo > 0) {
+      slowmo -= dt;
+      if (slowmo <= 0 && focus.length) resolveOuts();
+    }
 
     renderer.render(scene, camera);
     rafId = requestAnimationFrame(loop);
@@ -522,9 +661,12 @@ window.PlanetIslandGame = (function () {
     if (player) scene.remove(player.group);
     player = makeBeing(body, '#9be7ff');
     player.group.position.set(0, player.R, 0);
+    player._done = false; player._respawning = false; player._pendingEnd = null;
     state = 'playing'; over = false;
+    slowmo = 0; focus = []; camMode = 'follow';
     lives = LIVES; updateHearts();
     collisions = 0; updateScore();
+    if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
     showHint('点击起跳 · 滑动滚动 · 长按马力冲坡 · 把对手挤下岛！', 2.6);
     if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
   }
@@ -561,12 +703,15 @@ window.PlanetIslandGame = (function () {
     overEl = $('island-over');
     overTitleEl = $('island-over-title');
     overSubEl = $('island-over-sub');
+    viewBtn = $('island-view');
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 
     canvas.addEventListener('pointerdown', function (e) {
       if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
-      if (state !== 'playing') return;
       var rect = canvas.getBoundingClientRect();
+      pointers[e.pointerId] = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      if (state !== 'playing') return;
+      if (camMode === 'orbit') return;     // 旋转视角模式：不跳不滚，只转相机
       var x = e.clientX - rect.left, y = e.clientY - rect.top;
       ndc.x = (x / rect.width) * 2 - 1; ndc.y = -(y / rect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
@@ -577,17 +722,42 @@ window.PlanetIslandGame = (function () {
       try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     });
     canvas.addEventListener('pointermove', function (e) {
-      if (!input.active || drag.id !== e.pointerId) return;
+      if (!pointers[e.pointerId]) return;
       var rect = canvas.getBoundingClientRect();
       var x = e.clientX - rect.left, y = e.clientY - rect.top;
+      var px = pointers[e.pointerId].x, py = pointers[e.pointerId].y;
+      pointers[e.pointerId] = { x: x, y: y };
+      if (camMode === 'orbit') {
+        var ids = Object.keys(pointers);
+        if (ids.length >= 2) {
+          // 双指捏合缩放
+          var p0 = pointers[ids[0]], p1 = pointers[ids[1]];
+          var d = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+          if (orbitPinchLast > 0) camDist = clamp(camDist * (orbitPinchLast / d), 24, 130);
+          orbitPinchLast = d;
+        } else {
+          camAz -= (x - px) * 0.006;
+          camEl = clamp(camEl + (y - py) * 0.006, 0.12, 1.45);
+          orbitPinchLast = 0;
+        }
+        return;
+      }
+      if (!input.active || drag.id !== e.pointerId) return;
       drag.lastX = x; drag.lastY = y;
       var tdx = x - drag.x0, tdy = y - drag.y0;
       input.x = clamp(tdx * 0.02, -1, 1);   // 右滑 → +X
       input.z = clamp(tdy * 0.02, -1, 1);   // 上滑(tdy<0) → -Z（向前）
     });
-    function endDrag() { input.active = false; input.x = 0; input.z = 0; drag.id = null; }
+    function endDrag(e) {
+      if (e && pointers[e.pointerId]) delete pointers[e.pointerId];
+      orbitPinchLast = 0;
+      if (Object.keys(pointers).length === 0) {
+        input.active = false; input.x = 0; input.z = 0; drag.id = null;
+      }
+    }
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') endDrag(e); });
 
     boostBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); boosting = true; boostBtn.classList.add('boosting'); });
     boostBtn.addEventListener('pointerup', function () { boosting = false; boostBtn.classList.remove('boosting'); });
@@ -604,6 +774,17 @@ window.PlanetIslandGame = (function () {
     var menuBtn = $('btn-island-menu');
     if (menuBtn) menuBtn.addEventListener('click', function () { if (window.__showMenu) window.__showMenu(); });
 
+    if (viewBtn) viewBtn.addEventListener('click', function () {
+      camMode = (camMode === 'orbit') ? 'follow' : 'orbit';
+      if (camMode === 'orbit') {
+        camAz = 0; camEl = 0.7; camDist = 64; viewBtn.textContent = '🎮 跟拍';
+      } else {
+        viewBtn.textContent = '🔄 视角';
+      }
+      viewBtn.classList.toggle('active', camMode === 'orbit');
+      showHint(camMode === 'orbit' ? '自由视角：拖动旋转 · 双指缩放 · 再看岛' : '回到跟拍视角', 1.6);
+    });
+
     window.addEventListener('resize', resize);
   }
 
@@ -616,6 +797,8 @@ window.PlanetIslandGame = (function () {
     resize();
     state = 'select';
     showSelect(true);
+    slowmo = 0; focus = []; camMode = 'follow';
+    if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
     running = true;
     lastT = performance.now();
     if (rafId) cancelAnimationFrame(rafId);
@@ -627,5 +810,16 @@ window.PlanetIslandGame = (function () {
     boosting = false;
   }
 
-  return { init: init, open: open, beginPlay: beginPlay, stop: stop };
+  return {
+    init: init, open: open, beginPlay: beginPlay, stop: stop,
+    debug: function () {
+      return {
+        get player() { return player; },
+        get npcs() { return npcs; },
+        props: props,
+        get slowmo() { return slowmo; },
+        get camMode() { return camMode; }
+      };
+    }
+  };
 })();
