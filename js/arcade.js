@@ -786,5 +786,8 @@ window.ArcadeGame = (function () {
     elOver.style.display = 'flex';
   }
 
+  // 暴露音效模块给 planetpk.js 复用（Web Audio 合成，无音频文件）
+  window.Sfx = Sfx;
+
   return { init, start, stop };
 })();

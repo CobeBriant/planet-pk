@@ -94,11 +94,13 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 14px;
+  padding: 24px 18px;
+  box-sizing: border-box;
 }
 
 .menu-title {
-  font-size: 42px;
+  font-size: 36px;
   font-weight: 800;
   background: linear-gradient(135deg, #6CF, #F68, #FF6);
   -webkit-background-clip: text;
@@ -106,34 +108,59 @@ html, body {
   background-clip: text;
   letter-spacing: 3px;
   text-align: center;
+  flex: 0 0 auto;
 }
 
 .menu-subtitle {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(160, 180, 220, 0.7);
-  margin-top: -12px;
+  margin-top: -8px;
+  flex: 0 0 auto;
+}
+
+/* 菜单网格：2 列自适应，5 个按钮也能放下不溢出 */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 380px;
 }
 
 .menu-btn {
-  width: 240px;
-  padding: 16px 0;
+  width: 100%;
+  padding: 14px 6px;
   border: 1px solid rgba(100, 130, 255, 0.4);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(30, 30, 60, 0.8);
   color: #fff;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   text-align: center;
   transition: transform 0.1s;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
+
+/* 第 5 个按钮跨两列，居中，平衡布局 */
+.menu-btn-wide {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  gap: 10px;
+  font-size: 17px;
+}
+.menu-btn-wide .icon { margin-bottom: 0; }
 
 .menu-btn:active {
   transform: scale(0.96);
   background: rgba(50, 50, 90, 0.9);
 }
 
-.menu-btn .icon { display: block; font-size: 28px; margin-bottom: 4px; }
+.menu-btn .icon { display: block; font-size: 24px; margin-bottom: 4px; }
 
 /* ===== PK对战画面 ===== */
 .pk-screen {
@@ -950,4 +977,70 @@ html, body {
   line-height: 1.8;
 }
 .arcade-over-stats b { color: #aef3ff; }
+
+/* ===== 星球PK（拟人化星球对战） ===== */
+.planetpk-screen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: #05010f;
+  overflow: hidden;
+}
+.planetpk-arena {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#planetpk-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+/* 危险预警红光 */
+.planetpk-danger {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: inset 0 0 40px rgba(255,40,70,0.5);
+  transition: opacity 0.15s linear;
+  z-index: 5;
+}
+/* 结果提示浮层 */
+.planetpk-toast {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  padding: 10px 22px;
+  background: rgba(10, 20, 50, 0.85);
+  border: 1px solid rgba(120, 220, 255, 0.4);
+  border-radius: 14px;
+  color: #aef3ff;
+  font-size: 18px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 6;
+  text-align: center;
+}
+/* 结算面板 */
+.planetpk-over {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.88);
+}
 

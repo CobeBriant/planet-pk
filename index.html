@@ -19,23 +19,28 @@
   <div class="menu-screen" id="menu-screen">
     <div class="menu-title">星球PK</div>
     <div class="menu-subtitle">探索宇宙天体的大小奥秘</div>
-    <div style="height: 12px;"></div>
-    <button class="menu-btn" id="btn-pk">
-      <span class="icon">VS</span>
-      PK 对战
-    </button>
-    <button class="menu-btn" id="btn-explore">
-      <span class="icon">O</span>
-      自由探索
-    </button>
-    <button class="menu-btn" id="btn-custom">
-      <span class="icon">+</span>
-      我的星系
-    </button>
-    <button class="menu-btn" id="btn-arcade">
-      <span class="icon">▶</span>
-      游戏
-    </button>
+    <div class="menu-grid">
+      <button class="menu-btn" id="btn-pk">
+        <span class="icon">VS</span>
+        PK 对战
+      </button>
+      <button class="menu-btn" id="btn-explore">
+        <span class="icon">O</span>
+        自由探索
+      </button>
+      <button class="menu-btn" id="btn-custom">
+        <span class="icon">+</span>
+        我的星系
+      </button>
+      <button class="menu-btn" id="btn-arcade">
+        <span class="icon">▶</span>
+        游戏
+      </button>
+      <button class="menu-btn menu-btn-wide" id="btn-planetpk">
+        <span class="icon">⚔</span>
+        星球PK
+      </button>
+    </div>
   </div>
 
   <!-- ===== PK对战 ===== -->
@@ -241,6 +246,34 @@
     </div>
   </div>
 
+  <!-- ===== 星球PK（拟人化星球对战） ===== -->
+  <div class="planetpk-screen" id="planetpk-screen" style="display:none;">
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-planetpk">← 返回</button>
+      <div class="score-box">
+        <div class="score-label">连胜 <span id="planetpk-streak">0</span></div>
+        <div><span class="score-value" id="planetpk-score">0</span></div>
+      </div>
+      <div class="arcade-lives" id="planetpk-lives">♥♥♥</div>
+      <button class="arcade-mute" id="planetpk-mute" title="音效开关">🔊</button>
+    </div>
+    <div class="planetpk-arena">
+      <canvas id="planetpk-canvas"></canvas>
+      <div class="planetpk-danger" id="planetpk-danger"></div>
+      <div class="planetpk-toast" id="planetpk-toast"></div>
+    </div>
+    <div class="arcade-foot">点击你认为更大的星球，看它击败对手！</div>
+    <div class="planetpk-over" id="planetpk-over" style="display:none;">
+      <div class="arcade-over-title" id="planetpk-over-title">游戏结束</div>
+      <div class="arcade-over-score" id="planetpk-over-score">0</div>
+      <div class="arcade-over-stats" id="planetpk-over-stats"></div>
+      <div style="display:flex;gap:12px;margin-top:12px;">
+        <button class="menu-btn" id="planetpk-replay" style="width:140px;font-size:16px;">再来一局</button>
+        <button class="menu-btn" id="planetpk-menu" style="width:140px;font-size:16px;">主菜单</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== 游戏结束 ===== -->
   <div class="gameover-screen" id="gameover-screen" style="display:none;">
     <div class="gameover-title" id="gameover-title">游戏结束</div>
@@ -257,5 +290,6 @@
 <script src="js/data.js"></script>
 <script src="js/arcade.js"></script>
 <script src="js/game.js"></script>
+<script src="js/planetpk.js"></script>
 </body>
 </html>

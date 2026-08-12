@@ -129,8 +129,12 @@
 
   // ========== 图片加载系统 ==========
   const imageCache = {};
-  // 暴露给 arcade.js 复用（避免重复加载）
+  // 暴露给 arcade.js / planetpk.js 复用（避免重复加载）
   window.PKImageCache = imageCache;
+  // 暴露给 planetpk.js：获取自定义天体数组（始终为最新引用）
+  window.getCustomBodies = function () { return CUSTOM_BODIES; };
+  // 暴露给 planetpk.js：返回主菜单
+  window.__showMenu = showMenu;
 
   function preloadImages(callback) {
     const bodiesWithImages = getAllBodies().filter(b => b.image && !b.isCustom);
@@ -913,11 +917,13 @@
     $('explore-screen').style.display = 'none';
     $('custom-screen').style.display = 'none';
     $('arcade-screen').style.display = 'none';
+    $('planetpk-screen').style.display = 'none';
     $('gameover-screen').style.display = 'none';
     $('result-overlay').classList.remove('show');
     clearAutoNext();
     cancelPKAnimation();
     if (window.ArcadeGame) window.ArcadeGame.stop();
+    if (window.PlanetPkGame) window.PlanetPkGame.stop();
   }
 
   function cancelPKAnimation() {
@@ -1401,6 +1407,13 @@
     if (window.ArcadeGame) window.ArcadeGame.start();
   }
 
+  function startPlanetPK() {
+    STATE.mode = 'planetpk';
+    hideAll();
+    $('planetpk-screen').style.display = 'flex';
+    if (window.PlanetPkGame) window.PlanetPkGame.start();
+  }
+
   function showCustomList() {
     $('custom-list-view').style.display = 'block';
     $('custom-form-view').style.display = 'none';
@@ -1602,6 +1615,7 @@
     $('btn-explore').addEventListener('click', startExplore);
     $('btn-custom').addEventListener('click', startCustom);
     $('btn-arcade').addEventListener('click', startArcade);
+    $('btn-planetpk').addEventListener('click', startPlanetPK);
 
     $('pk-btn-a').addEventListener('click', function() { answer('a'); });
     $('pk-btn-b').addEventListener('click', function() { answer('b'); });
@@ -1621,6 +1635,7 @@
     $('btn-back-explore').addEventListener('click', showMenu);
     $('btn-back-custom').addEventListener('click', showMenu);
     $('btn-back-arcade').addEventListener('click', showMenu);
+    $('btn-back-planetpk').addEventListener('click', showMenu);
 
     // 游戏 Tab 内结算面板
     $('arcade-replay').addEventListener('click', startArcade);

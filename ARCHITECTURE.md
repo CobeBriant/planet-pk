@@ -33,8 +33,9 @@ planet-pk/
 ├── index.html              # ★ 主页面 — 5 个屏幕的 HTML 结构（菜单/PK/探索/我的星系/游戏）
 ├── css/style.css           # ★ 全部样式 — 响应式 + 动画
 ├── js/data.js              # ★ 天体数据库 — 45+ 个天体的真实天文数据
-├── js/game.js              # ★ 核心引擎 — 菜单切换/PK逻辑/探索/自定义天体/游戏入口
-├── js/arcade.js            # ★ 游戏 Tab — 弹球击退星球（独立模块，挂 window.ArcadeGame）
+├── js/game.js              # ★ 核心引擎 — 菜单切换/PK逻辑/探索/自定义天体/各Tab入口
+├── js/arcade.js            # ★ 游戏 Tab — 太空射击（独立模块，挂 window.ArcadeGame，内置 Sfx 音效）
+├── js/planetpk.js          # ★ 星球PK Tab — 拟人化星球对战（独立模块，挂 window.PlanetPkGame）
 ├── assets/images/          # 11 张真实天体纹理 (2K jpg/png)
 ├── www/                    # Capacitor 同步目录（index.html + css/ + js/ + assets/ 的副本）
 ├── android/                # Capacitor Android 工程
@@ -46,7 +47,8 @@ planet-pk/
 └── ARCHITECTURE.md         # 本文件
 ```
 
-**重要：改代码只改 `index.html` / `css/style.css` / `js/data.js` / `js/game.js` 这 4 个文件。**
+**重要：核心改动基本集中在 6 个文件** — `index.html`（屏幕结构）、`css/style.css`（全部样式）、`js/data.js`（天体数据）、`js/game.js`（核心引擎/菜单切换/各Tab入口）、`js/arcade.js`（游戏Tab）、`js/planetpk.js`（星球PK Tab）。
+`js/arcade.js` 与 `js/planetpk.js` 是互相解耦的独立模块，分别挂 `window.ArcadeGame` / `window.PlanetPkGame`，并复用 `game.js` 暴露的 `window.PKImageCache`（真实纹理）与 `window.Sfx`（音效）。
 改完后必须同步到 `www/` 目录再重新构建 APK。
 
 ## 核心文件详解
@@ -279,6 +281,26 @@ python3 -m http.server 8080
 # 浏览器打开 http://localhost:8080
 ```
 
+### 6. `js/planetpk.js` — 星球PK Tab（拟人化星球对战）
+
+复刻「参考视频」效果：两个真实天体左右并排拟人化对战，玩家点更大的那颗，它击败对手。
+
+- **入口**：`game.js` 的 `startPlanetPK()` 显示 `#planetpk-screen` 并调 `window.PlanetPkGame.start()`；`hideAll()` 里会 `window.PlanetPkGame.stop()` 停循环。
+- **模块结构**：IIFE 挂 `window.PlanetPkGame = { init, start, stop }`，与 `game.js` 解耦。
+- **数据源**：`getPool()` 合并 `CELESTIAL_DATA` + 自定义天体（`window.getCustomBodies()`），筛选有 `radius` 的。
+- **回合状态机**：`phase` = `intro`（滑入）→ `idle`（等点击）→ `resolve`（攻击演出）→ `win`（胜者庆祝）→ 硬切 `newRound()`。各阶段时长常量：`INTRO_DUR / RESOLVE_DUR / WIN_DUR`。
+- **交互**：`canvas` 上 `pointerdown`，按点击 x 落在左/右半屏判定选边；首次触摸解锁 `window.Sfx`。
+- **视觉演出**：
+  - 球体：`drawPlanet()` 用 `window.PKImageCache[name]` 真实纹理（无图则 `lighten()` 程序化径向渐变），clip 成圆。
+  - 眼睛：`drawEyes()` — `closed`=半月弧（待机闭眼），`open`=白圆眼+瞳孔（胜者）。
+  - 败者：`drawX()` 红色十字 + `drawLaser()` 斜射激光 + 震屏 + 橙光爆闪 → 粒子碎裂消融。
+  - 胜者：`drawLaurel()` 金色桂冠光环旋转 + 镜头推近（`R` 放大）。
+  - 名字：青（左）/红（右）霓虹发光，`drawVS()` 中央脉冲。
+  - 配色常量 `COL` = { cyan:#00E5FF, red:#FF1744, gold:#FFD700, white }。
+- **计分/生命**：答对 `streak++`、得分 `100*streak`；答错 `streak=0`、`lives-1`；3 命用尽 `gameOver()`。
+
+**改星球PK 玩法**：基本都在 `js/planetpk.js` 内（阶段时长、配色 `COL`、眼睛/桂冠/激光绘制函数、`getPool()` 选体逻辑、计分规则 `onTap()`）。
+
 ## 常见修改指南
 
 | 需求 | 改哪里 |
@@ -296,7 +318,11 @@ python3 -m http.server 8080
 | 改游戏碰撞逻辑 | `js/arcade.js` → `ballHitsPlanet()` / `ballHitsPaddle()` |
 | 改游戏特效参数 | `js/arcade.js` → `burst()` / `addShake()` / `updateDangerVisual()` |
 | 改游戏布局 | `index.html` 的 `#arcade-screen` + `css/style.css` 的 `.arcade-*` |
-| 改/加游戏音效 | `js/arcade.js` → `Sfx` 模块（`hit`/`destroy`/`paddle`/`lifeLost`/`levelUp`/`gameOver`/`start`，全用 Web Audio 合成，无音频文件） |
+| 改/加游戏音效 | `js/arcade.js` → `Sfx` 模块（`hit`/`destroy`/`paddle`/`lifeLost`/`levelUp`/`gameOver`/`start`，全用 Web Audio 合成，无音频文件；已通过 `window.Sfx` 暴露给 planetpk.js 复用） |
+| 改星球PK 演出/配色 | `js/planetpk.js` → `COL` 常量、`drawX()`/`drawLaser()`/`drawLaurel()`/`drawEyes()`、`INTRO_DUR/RESOLVE_DUR/WIN_DUR` |
+| 改星球PK 选体/计分 | `js/planetpk.js` → `getPool()`（选哪两个天体）、`onTap()`（判定与计分/生命规则） |
+| 改星球PK 布局 | `index.html` 的 `#planetpk-screen` + `css/style.css` 的 `.planetpk-*` |
+| 改主菜单（5 个 Tab） | `index.html` 的 `.menu-grid`（2 列网格，第 5 个 `.menu-btn-wide` 跨两列）+ `css/style.css` 的 `.menu-grid`/`.menu-btn` |
 
 ## 已知限制
 
@@ -304,7 +330,8 @@ python3 -m http.server 8080
 2. 矮行星/部分恒星/星系无真实纹理，用程序化绘制
 3. 探索模式未完全升级到 V4 天体数据
 4. debug APK 未签名（不能上架应用商店）
-5. 游戏 Tab 为 V5 原型：单球基础玩法，关卡/生命/特效已实现；V5.1 已加合成音效，但尚缺背景音乐、道具、Boss、排行榜
+5. 游戏 Tab 为太空射击（V6 重写）：战机+自动射击+下落天体，关卡/生命/特效/音效已实现；尚缺背景音乐、道具、Boss、排行榜
+6. 星球PK Tab（V7 新增）：拟人化星球对战，复刻参考视频效果；尚缺背景音乐、连击特效、难度梯度
 
 ## 版本历史
 
@@ -316,5 +343,7 @@ python3 -m http.server 8080
 | V4.0 | 修复 PK 答题卡死 bug，新增「我的星系」自定义天体功能 |
 | V5.0 | 新增第 4 个 Tab「游戏」：弹球击退星球原型（Canvas 2D + rAF + 粒子/震屏/危险预警） |
 | V5.1 | 游戏 Tab 新增音效（Web Audio 实时合成，无音频文件）+ 静音开关 |
+| V6.0 | 游戏 Tab 重写为太空射击（触摸飞行战机 + 自动射击 + 下落真实天体） |
+| V7.0 | 主菜单改为 5-Tab 自适应网格；新增第 5 个 Tab「星球PK」：拟人化真实天体对战（闭眼/睁眼、斜射激光、红叉、震屏、金桂冠、硬切转场） |
 
 详见 `docs/迭代记录.md`。
