@@ -19,6 +19,7 @@ window.PlanetIslandGame = (function () {
 
   // ---------- DOM ----------
   var canvas, selectEl, gridEl, hintEl, boostBtn, muteBtn, scoreEl;
+  var heartsEl, overEl, overTitleEl, overSubEl;
   var renderer, scene, camera;
   var starfield, islandGroup, ramps = [];
   var player = null, npcs = [];
@@ -27,8 +28,12 @@ window.PlanetIslandGame = (function () {
   var collisions = 0;
   var boosting = false;
   var W = 0, H = 0, dpr = 1;
-  var islandR = 52;
+  var islandR = 104;               // 岛平面半径（原 52，现 2 倍）
   var FACE_TEX = null;
+  var FALL_Y = -16;                // 低于此高度视为掉下岛
+  var LIVES = 3;                   // 玩家红心数
+  var lives = LIVES;
+  var over = false;
 
   // 物理参数（手感已调：跳更高 / 马力更猛 / 摩擦保留）
   var GRAV = 30, JUMP = 19, ACCEL = 52, BOOST_MULT = 2.6;
@@ -134,7 +139,8 @@ window.PlanetIslandGame = (function () {
     var fs = R * 1.55;
     face.scale.set(fs, fs, 1);
     face.position.set(0, R * 0.04, R * 0.98);
-    group.add(face);
+    // Q版星仔自带卡通脸（customImage），不再叠加邪恶拟人脸
+    if (!(body.customImage)) group.add(face);
 
     // 名字标签（悬在球体上方，始终朝向相机）
     var label = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTexture(body.name, labelColor || '#ffd24d'), transparent: true, depthTest: false }));
@@ -147,8 +153,8 @@ window.PlanetIslandGame = (function () {
     scene.add(group);
     return {
       group: group, sphere: sphere, label: label, R: R, body: body, mass: massFactor(body),
-      vel: new THREE.Vector3(), grounded: false, jumpCd: 0,
-      ai: { tx: rand(-30, 30), tz: rand(-30, 30), hopCd: rand(1, 4), seek: false }
+      vel: new THREE.Vector3(), grounded: false, jumpCd: 0, out: false,
+      ai: { tx: rand(-30, 30), tz: rand(-30, 30), hopCd: rand(1, 4), seek: false, dash: 0, dashTx: 0, dashTz: 0 }
     };
   }
 
@@ -169,7 +175,8 @@ window.PlanetIslandGame = (function () {
   function addRamp(angle, hw, len, h) {
     var ux = Math.sin(angle), uz = Math.cos(angle);
     var px = Math.cos(angle), pz = -Math.sin(angle);
-    var d0 = islandR * 0.28;
+    var d0 = islandR * 0.22;
+    var platLen = len * 0.20;       // 坡顶平台长度
     var geo = new THREE.BufferGeometry();
     var v = [
       -hw, 0, 0, hw, 0, 0, hw, 0, len, -hw, 0, len,
@@ -187,7 +194,14 @@ window.PlanetIslandGame = (function () {
     basis.setPosition(ux * d0, 0, uz * d0);
     m.matrix.copy(basis);
     islandGroup.add(m);
-    ramps.push({ ux: ux, uz: uz, px: px, pz: pz, d0: d0, len: len, hw: hw, h: h, slope: h / len });
+    // 坡顶平台（一块平板，落在岛边缘当作起跳台）
+    var pg = new THREE.BoxGeometry(2 * hw, 1.6, platLen);
+    var pm = new THREE.Mesh(pg, mat);
+    pm.matrixAutoUpdate = false;
+    var pmat = new THREE.Matrix4().makeTranslation(0, h + 0.8, len + platLen / 2);
+    pm.matrix.copy(basis).multiply(pmat);
+    islandGroup.add(pm);
+    ramps.push({ ux: ux, uz: uz, px: px, pz: pz, d0: d0, len: len, hw: hw, h: h, slope: h / len, platLen: platLen });
   }
 
   function terrainHeight(x, z) {
@@ -195,11 +209,14 @@ window.PlanetIslandGame = (function () {
     for (var i = 0; i < ramps.length; i++) {
       var r = ramps[i];
       var along = (x * r.ux + z * r.uz) - r.d0;
-      if (along < 0 || along > r.len) continue;
       var across = x * r.px + z * r.pz;
       if (Math.abs(across) > r.hw) continue;
-      var hh = r.slope * along;
-      if (hh > g) g = hh;
+      if (along >= 0 && along <= r.len) {
+        var hh = r.slope * along;
+        if (hh > g) g = hh;
+      } else if (along > r.len && along <= r.len + r.platLen) {
+        if (r.h > g) g = r.h;   // 平台顶
+      }
     }
     return g;
   }
@@ -209,9 +226,9 @@ window.PlanetIslandGame = (function () {
     scene.background = new THREE.Color(0x03020c);
     scene.fog = new THREE.FogExp2(0x03020c, 0.0055);
 
-    camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 700);
-    camera.position.set(0, 22, 30);
-    camera.lookAt(0, 2, 0);
+    camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 900);
+    camera.position.set(0, 42, 58);
+    camera.lookAt(0, 3, 0);
 
     scene.add(new THREE.AmbientLight(0x556688, 0.95));
     var dir = new THREE.DirectionalLight(0xffffff, 0.95); dir.position.set(20, 45, 20); scene.add(dir);
@@ -247,9 +264,9 @@ window.PlanetIslandGame = (function () {
       islandGroup.add(patch);
     }
     ramps = [];
-    addRamp(0, islandR * 0.18, islandR * 0.72, 20);
-    addRamp(Math.PI * 0.66, islandR * 0.16, islandR * 0.72, 18);
-    addRamp(-Math.PI * 0.66, islandR * 0.16, islandR * 0.72, 18);
+    addRamp(0, islandR * 0.16, islandR * 0.58, 20);
+    addRamp(Math.PI * 0.66, islandR * 0.15, islandR * 0.58, 18);
+    addRamp(-Math.PI * 0.66, islandR * 0.15, islandR * 0.58, 18);
   }
 
   // ============ NPC ============
@@ -272,9 +289,11 @@ window.PlanetIslandGame = (function () {
   function stepBeing(b, dt) {
     b.vel.y -= GRAV * dt;
     b.group.position.addScaledVector(b.vel, dt);
-    var gy = terrainHeight(b.group.position.x, b.group.position.z);
+    var r2 = Math.hypot(b.group.position.x, b.group.position.z);
+    var onIsland = r2 <= islandR;                 // 岛外的虚空没有地面
+    var gy = onIsland ? terrainHeight(b.group.position.x, b.group.position.z) : -1e9;
     var floor = gy + b.R;
-    if (b.group.position.y <= floor) {
+    if (gy > -1e8 && b.group.position.y <= floor) {
       b.group.position.y = floor;
       if (b.vel.y < 0) b.vel.y = -b.vel.y * REST;
       if (Math.abs(b.vel.y) < 1.2) b.vel.y = 0;
@@ -282,14 +301,8 @@ window.PlanetIslandGame = (function () {
     } else {
       b.grounded = false;
     }
-    var r2 = Math.hypot(b.group.position.x, b.group.position.z);
-    var lim = islandR - b.R - 1;
-    if (r2 > lim) {
-      var nx = b.group.position.x / r2, nz = b.group.position.z / r2;
-      b.group.position.x = nx * lim; b.group.position.z = nz * lim;
-      var out = b.vel.x * nx + b.vel.z * nz;
-      if (out > 0) { b.vel.x -= out * nx; b.vel.z -= out * nz; }
-    }
+    // 掉下岛
+    if (b.group.position.y < FALL_Y) b.out = true;
   }
 
   function rollSphere(b, dt) {
@@ -336,6 +349,21 @@ window.PlanetIslandGame = (function () {
         b.ai.seek = true; b.ai.tx = player.group.position.x; b.ai.tz = player.group.position.z;
       }
     }
+    // 随机加速冲刺（朝玩家或随机方向猛冲）
+    if (b.ai.dash > 0) {
+      b.ai.dash -= dt;
+      var gx = b.ai.dashTx - b.group.position.x, gz = b.ai.dashTz - b.group.position.z;
+      var gl = Math.hypot(gx, gz) || 1;
+      b.vel.x += (gx / gl) * 50 * dt; b.vel.z += (gz / gl) * 50 * dt;
+    } else if (Math.random() < 0.004) {
+      b.ai.dash = rand(0.5, 1.2);
+      if (player && Math.hypot(player.group.position.x - b.group.position.x, player.group.position.z - b.group.position.z) < 42) {
+        b.ai.dashTx = player.group.position.x; b.ai.dashTz = player.group.position.z;
+      } else {
+        b.ai.dashTx = rand(-islandR * 0.85, islandR * 0.85);
+        b.ai.dashTz = rand(-islandR * 0.85, islandR * 0.85);
+      }
+    }
     if (b.ai.seek) {
       var tx = b.ai.tx - b.group.position.x, tz = b.ai.tz - b.group.position.z;
       var tl = Math.hypot(tx, tz);
@@ -355,7 +383,7 @@ window.PlanetIslandGame = (function () {
     if (b.grounded && b.ai.hopCd <= 0 && Math.random() < 0.02) {
       b.vel.y = JUMP * rand(0.7, 1.0); b.ai.hopCd = rand(2.5, 6); sfx('shoot');
     }
-    var sp = Math.hypot(b.vel.x, b.vel.z), mx = 20;
+    var sp = Math.hypot(b.vel.x, b.vel.z), mx = b.ai.dash > 0 ? 36 : 20;
     if (sp > mx) { var k = mx / sp; b.vel.x *= k; b.vel.z *= k; }
     if (b.grounded) { var d = Math.exp(-DRAG * 1.3 * dt); b.vel.x *= d; b.vel.z *= d; }
   }
@@ -388,12 +416,51 @@ window.PlanetIslandGame = (function () {
   function updateCamera(dt) {
     if (!player) { camera.lookAt(0, 2, 0); return; }
     var p = player.group.position;
-    var tx = p.x, ty = p.y + 16, tz = p.z + 26;
+    var tx = p.x, ty = p.y + 24, tz = p.z + 46;
     var k = Math.min(1, dt * 4);
     camera.position.x += (tx - camera.position.x) * k;
     camera.position.y += (ty - camera.position.y) * k;
     camera.position.z += (tz - camera.position.z) * k;
-    camera.lookAt(p.x, p.y + 2, p.z);
+    camera.lookAt(p.x, p.y + 3, p.z);
+  }
+
+  // ============ 出局 / 胜负 ============
+  function updateHearts() {
+    if (heartsEl) heartsEl.textContent = '❤'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, LIVES - lives));
+  }
+  function handleOuts() {
+    if (player && player.out) {
+      player.out = false; lives--; updateHearts(); sfx('lifeLost');
+      if (lives <= 0) { endGame(false); return; }
+      player.group.position.set(0, player.R, 0);
+      player.vel.set(0, 0, 0);
+      showHint('掉下岛了！-1 ❤', 1.6);
+    }
+    for (var i = npcs.length - 1; i >= 0; i--) {
+      if (npcs[i].out) {
+        scene.remove(npcs[i].group);
+        npcs.splice(i, 1);
+        sfx('hit');
+      }
+    }
+    if (npcs.length === 0) endGame(true);
+  }
+  function endGame(win) {
+    over = true; state = 'over';
+    if (overTitleEl) overTitleEl.textContent = win ? '🎉 胜利！' : '💥 失败';
+    if (overSubEl) overSubEl.textContent = win ? '所有对手都被挤下岛啦！' : '红心用完了，再接再厉！';
+    if (overEl) overEl.style.display = 'flex';
+    sfx(win ? 'levelUp' : 'gameOver');
+  }
+  function restart() {
+    if (overEl) overEl.style.display = 'none';
+    lives = LIVES; updateHearts();
+    npcs.forEach(function (n) { scene.remove(n.group); }); npcs = [];
+    spawnNPCs();
+    if (player) { player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0); player.out = false; }
+    over = false; state = 'playing';
+    collisions = 0; updateScore();
+    showHint('把对手全部挤下岛就赢！', 2);
   }
 
   // ============ 主循环 ============
@@ -407,6 +474,7 @@ window.PlanetIslandGame = (function () {
     if (state === 'playing') {
       for (var a = 0; a < npcs.length; a++) collide(player, npcs[a]);
       for (var c = 0; c < npcs.length; c++) for (var d = c + 1; d < npcs.length; d++) collide(npcs[c], npcs[d]);
+      handleOuts();
     }
     if (player) rollSphere(player, dt);
     for (var e = 0; e < npcs.length; e++) rollSphere(npcs[e], dt);
@@ -454,9 +522,10 @@ window.PlanetIslandGame = (function () {
     if (player) scene.remove(player.group);
     player = makeBeing(body, '#9be7ff');
     player.group.position.set(0, player.R, 0);
-    state = 'playing';
+    state = 'playing'; over = false;
+    lives = LIVES; updateHearts();
     collisions = 0; updateScore();
-    showHint('点击球体起跳 · 滑动屏幕滚动 · 按住「马力」冲坡', 2.4);
+    showHint('点击起跳 · 滑动滚动 · 长按马力冲坡 · 把对手挤下岛！', 2.6);
     if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
   }
 
@@ -488,6 +557,10 @@ window.PlanetIslandGame = (function () {
     boostBtn = $('island-boost');
     muteBtn = $('island-mute');
     scoreEl = $('island-score');
+    heartsEl = $('island-hearts');
+    overEl = $('island-over');
+    overTitleEl = $('island-over-title');
+    overSubEl = $('island-over-sub');
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 
     canvas.addEventListener('pointerdown', function (e) {
@@ -525,6 +598,11 @@ window.PlanetIslandGame = (function () {
       var m = window.Sfx ? window.Sfx.toggleMute() : false;
       muteBtn.textContent = m ? '🔇' : '🔊';
     });
+
+    var againBtn = $('btn-island-again');
+    if (againBtn) againBtn.addEventListener('click', function () { restart(); });
+    var menuBtn = $('btn-island-menu');
+    if (menuBtn) menuBtn.addEventListener('click', function () { if (window.__showMenu) window.__showMenu(); });
 
     window.addEventListener('resize', resize);
   }

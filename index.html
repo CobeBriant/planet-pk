@@ -44,6 +44,10 @@
         <span class="icon">🪐</span>
         星球岛
       </button>
+      <button class="menu-btn menu-btn-wide" id="btn-qstar">
+        <span class="icon">🧸</span>
+        Q版星仔
+      </button>
     </div>
   </div>
 
@@ -286,6 +290,7 @@
         <div class="score-label">星球岛</div>
         <div class="score-value" id="island-score" style="font-size:14px;">碰撞 0</div>
       </div>
+      <div class="island-hearts" id="island-hearts">❤❤❤</div>
       <button class="arcade-mute" id="island-mute" title="音效开关">🔊</button>
     </div>
 
@@ -295,7 +300,7 @@
       <!-- 选星球浮层 -->
       <div class="island-select" id="island-select">
         <div class="island-select-title">选择你的星球</div>
-        <div class="island-select-sub">按真实半径适配大小 · 点击球体起跳，滑动屏幕滚动，长按「马力」冲坡</div>
+        <div class="island-select-sub">按真实半径适配大小 · 把对手全部挤下岛就赢！</div>
         <div class="island-select-grid" id="island-select-grid"></div>
       </div>
 
@@ -304,7 +309,51 @@
 
       <!-- 马力按钮 -->
       <button class="island-boost" id="island-boost">马力</button>
+
+      <!-- 结算浮层 -->
+      <div class="island-over" id="island-over" style="display:none;">
+        <div class="island-over-title" id="island-over-title">胜利！</div>
+        <div class="island-over-sub" id="island-over-sub"></div>
+        <div style="display:flex;gap:12px;margin-top:14px;">
+          <button class="menu-btn" id="btn-island-again" style="width:140px;font-size:16px;">再来一局</button>
+          <button class="menu-btn" id="btn-island-menu" style="width:140px;font-size:16px;">返回菜单</button>
+        </div>
+      </div>
     </div>
+  </div>
+
+  <!-- ===== Q版星仔（捏脸工坊） ===== -->
+  <div class="qstar-screen" id="qstar-screen" style="display:none;">
+    <div class="hud-top">
+      <button class="btn-back" id="btn-back-qstar">← 返回</button>
+      <div class="score-box">
+        <div class="score-label">Q版星仔</div>
+        <div class="score-value" style="font-size:14px;">捏脸工坊</div>
+      </div>
+    </div>
+
+    <div class="qstar-wrap">
+      <div class="qstar-preview-box">
+        <canvas id="qstar-preview" width="360" height="360"></canvas>
+      </div>
+      <label class="qstar-name-field">
+        <span>名字</span>
+        <input type="text" id="qstar-name" placeholder="给你的星仔起个名" maxlength="10">
+      </label>
+
+      <div class="qstar-section-title">① 选择基础星体</div>
+      <div class="qstar-base-picker" id="qstar-base-picker"></div>
+
+      <div class="qstar-section-title">② 捏脸（头发 / 眉毛 / 眼睛 / 鼻子 / 嘴巴）</div>
+      <div class="qstar-feats" id="qstar-feats"></div>
+
+      <button class="qstar-save" id="qstar-save">保存到星球岛</button>
+
+      <div class="qstar-section-title">③ 我的星仔（点一下可再编辑 / 删除）</div>
+      <div class="qstar-list" id="qstar-list"></div>
+    </div>
+
+    <div class="qstar-toast" id="qstar-toast"></div>
   </div>
 
   <!-- ===== 游戏结束 ===== -->
@@ -326,5 +375,6 @@
 <script src="js/planetpk.js"></script>
 <script src="assets/vendor/three.min.js"></script>
 <script src="js/island.js"></script>
+<script src="js/qstar.js"></script>
 </body>
 </html>

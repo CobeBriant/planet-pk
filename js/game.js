@@ -111,6 +111,30 @@
     }
   }
 
+  // 供 Q版星仔 调用：保存 / 删除自定义星仔，并即时载入贴图缓存
+  function loadCustomImage(body) {
+    if (!body || !body.customImage) return;
+    const img = new Image();
+    img.onload = () => { imageCache[body.id] = img; invalidateSprite(body.id); };
+    img.onerror = () => {};
+    img.src = body.customImage;
+  }
+  function saveCustomBody(body) {
+    const idx = CUSTOM_BODIES.findIndex(b => b.id === body.id);
+    if (idx >= 0) CUSTOM_BODIES[idx] = body; else CUSTOM_BODIES.push(body);
+    body.isCustom = true;
+    saveCustomBodies();
+    loadCustomImage(body);
+  }
+  function deleteCustomBody(id) {
+    CUSTOM_BODIES = CUSTOM_BODIES.filter(b => b.id !== id);
+    saveCustomBodies();
+    invalidateSprite(id);
+    delete imageCache[id];
+  }
+  window.saveCustomBody = saveCustomBody;
+  window.deleteCustomBody = deleteCustomBody;
+
   function guessStyleType(category) {
     switch (category) {
       case 'planet': return 'rocky';
@@ -137,7 +161,7 @@
   window.__showMenu = showMenu;
 
   function preloadImages(callback) {
-    const bodiesWithImages = getAllBodies().filter(b => b.image && !b.isCustom);
+    const bodiesWithImages = getAllBodies().filter(b => (b.image && !b.isCustom) || (b.isCustom && b.customImage));
     let loaded = 0;
     const total = bodiesWithImages.length;
 
@@ -164,7 +188,7 @@
           callback();
         }
       };
-      img.src = 'assets/images/' + body.image;
+      img.src = (body.isCustom && body.customImage) ? body.customImage : ('assets/images/' + body.image);
     });
 
     // Also load ring image
@@ -919,6 +943,7 @@
     $('arcade-screen').style.display = 'none';
     $('planetpk-screen').style.display = 'none';
     $('island-screen').style.display = 'none';
+    $('qstar-screen').style.display = 'none';
     $('gameover-screen').style.display = 'none';
     $('result-overlay').classList.remove('show');
     clearAutoNext();
@@ -1423,6 +1448,13 @@
     if (window.PlanetIslandGame) window.PlanetIslandGame.open();
   }
 
+  function startQStar() {
+    STATE.mode = 'qstar';
+    hideAll();
+    $('qstar-screen').style.display = 'flex';
+    if (window.PlanetQStar) window.PlanetQStar.open();
+  }
+
   function showCustomList() {
     $('custom-list-view').style.display = 'block';
     $('custom-form-view').style.display = 'none';
@@ -1626,6 +1658,7 @@
     $('btn-arcade').addEventListener('click', startArcade);
     $('btn-planetpk').addEventListener('click', startPlanetPK);
     $('btn-island').addEventListener('click', startIsland);
+    $('btn-qstar').addEventListener('click', startQStar);
 
     $('pk-btn-a').addEventListener('click', function() { answer('a'); });
     $('pk-btn-b').addEventListener('click', function() { answer('b'); });
@@ -1647,6 +1680,7 @@
     $('btn-back-arcade').addEventListener('click', showMenu);
     $('btn-back-planetpk').addEventListener('click', showMenu);
     $('btn-back-island').addEventListener('click', showMenu);
+    $('btn-back-qstar').addEventListener('click', showMenu);
 
     // 游戏 Tab 内结算面板
     $('arcade-replay').addEventListener('click', startArcade);
