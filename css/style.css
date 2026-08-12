@@ -1072,12 +1072,22 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 18px;
+  padding: 0;
   background: rgba(2, 4, 15, 0.82);
   backdrop-filter: blur(3px);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* 内容包裹层：空间足够时垂直居中；内容超高时回退到顶部，可滚动到最顶/最底 */
+.island-select-inner {
+  width: 100%;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 18px;
+  box-sizing: border-box;
 }
 .island-select-title {
   font-size: 24px;

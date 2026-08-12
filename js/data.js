@@ -205,6 +205,44 @@ const CELESTIAL_DATA = [
     radius: 25000000000000000, mass: 8.0e40, color: '#F0F0D0',
     style: { type: 'galaxy', spiral: true, edge: true },
     desc: '一个侧向我们的螺旋星系，因为看起来像草帽而得名。' },
+
+  // ========== 更多知名恒星（补全夏夜三角与最近邻星） ==========
+  { id: 'proxima', name: '比邻星', nameEn: 'Proxima Centauri', category: 'star',
+    radius: 107000, mass: 2.428e29, color: '#FF9988',
+    style: { type: 'star', red: true },
+    desc: '距离太阳最近的恒星！只有4.2光年，是一颗红矮星，比太阳小很多。' },
+  { id: 'vega', name: '织女星', nameEn: 'Vega', category: 'star',
+    radius: 1955000, mass: 4.25e30, color: '#BFD7FF',
+    style: { type: 'star', blue: true },
+    desc: '夏夜天空中最亮的恒星之一，是“夏季大三角”的一角，距离地球25光年。' },
+  { id: 'altair', name: '牛郎星', nameEn: 'Altair', category: 'star',
+    radius: 1580000, mass: 3.39e30, color: '#E8F0FF',
+    style: { type: 'star', blue: true },
+    desc: '隔着银河与织女星相望的恒星，是“夏季大三角”的一角，自转极快。' },
+  { id: 'deneb', name: '天津四', nameEn: 'Deneb', category: 'star',
+    radius: 128000000, mass: 1.9e31, color: '#EAF2FF',
+    style: { type: 'star', blue: true },
+    desc: '“夏季大三角”最亮的顶点，是一颗蓝白超巨星，距离我们约2600光年！' },
+
+  // ========== 冥王星的卫星（补全） ==========
+  { id: 'charon', name: '冥卫一', nameEn: 'Charon', category: 'moon',
+    radius: 606, mass: 1.586e21, color: '#B8B0A0',
+    style: { type: 'rocky', pale: true },
+    desc: '冥王星最大的卫星，大小和冥王星差不多，两者互相“潮汐锁定”面对面旋转。' },
+
+  // ========== 系外行星（补全热门目标） ==========
+  { id: 'proxima_b', name: '比邻星b', nameEn: 'Proxima b', category: 'planet',
+    radius: 7400, mass: 7.4e24, color: '#2E8E96',
+    style: { type: 'rocky', blue: true },
+    desc: '绕着比邻星转的行星，是离我们最近的系外行星！可能位于宜居带，或许有液态水。' },
+  { id: 'kepler452b', name: '开普勒452b', nameEn: 'Kepler-452b', category: 'planet',
+    radius: 11000, mass: 3.0e25, color: '#3E9E96',
+    style: { type: 'rocky', green: true },
+    desc: '被称为“地球2.0”的系外行星，绕着类太阳恒星转，一年约385天，距离1400光年。' },
+  { id: 'trappist1e', name: 'TRAPPIST-1e', nameEn: 'TRAPPIST-1e', category: 'planet',
+    radius: 5800, mass: 4.8e24, color: '#4E8EA6',
+    style: { type: 'rocky', ocean: true },
+    desc: '一颗岩质系外行星，是 TRAPPIST-1 系统里最可能存在液态水的“超级地球”之一。' },
 ];
 
 // 导出
