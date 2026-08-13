@@ -1147,46 +1147,93 @@ html, body {
   text-align: center;
   max-width: 90%;
 }
-.island-boost {
+/* ===== 虚拟摇杆（方向手柄）：前后左右 ===== */
+.island-stick {
   position: absolute;
-  right: 18px; bottom: 24px;
-  width: 78px; height: 78px;
+  left: 16px; bottom: 22px;
+  width: 116px; height: 116px;
   border-radius: 50%;
-  background: radial-gradient(circle at 32% 30%, #ffe26b, #ff7a00);
-  color: #3a1500;
-  font-weight: 800;
-  font-size: 17px;
-  border: none;
-  box-shadow: 0 0 20px rgba(255, 150, 0, 0.6);
+  background: radial-gradient(circle at 50% 50%, rgba(20, 30, 60, 0.55), rgba(6, 10, 28, 0.7));
+  border: 2px solid rgba(120, 170, 255, 0.55);
+  box-shadow: inset 0 0 18px rgba(60, 110, 220, 0.45), 0 0 14px rgba(40, 80, 180, 0.4);
   z-index: 7;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.island-stick::before {
+  content: "";
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 2px; height: 64%;
+  transform: translate(-50%, -50%);
+  background: rgba(150, 190, 255, 0.28);
+}
+.island-stick::after {
+  content: "";
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 64%; height: 2px;
+  transform: translate(-50%, -50%);
+  background: rgba(150, 190, 255, 0.28);
+}
+.island-stick-thumb {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 50px; height: 50px;
+  margin: -25px 0 0 -25px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #bfe2ff, #4a86ff);
+  box-shadow: 0 0 16px rgba(90, 150, 255, 0.85);
+  transition: transform 0.04s linear;
+  pointer-events: none;
+}
+.island-stick:active { border-color: rgba(150, 200, 255, 0.9); }
+
+/* ===== 右侧操作组合：马力 + 投石 ===== */
+.island-actions {
+  position: absolute;
+  right: 16px; bottom: 22px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 12px;
+  align-items: center;
+  z-index: 7;
+}
+.island-btn {
+  width: 76px; height: 76px;
+  border-radius: 50%;
+  border: none;
+  font-weight: 800;
   user-select: none;
   touch-action: none;
   cursor: pointer;
+  -webkit-user-select: none;
 }
-.island-boost:active { transform: scale(0.93); }
+.island-btn:active { transform: scale(0.93); }
+
+.island-boost {
+  background: radial-gradient(circle at 32% 30%, #ffe26b, #ff7a00);
+  color: #3a1500;
+  font-size: 17px;
+  box-shadow: 0 0 20px rgba(255, 150, 0, 0.6);
+}
 .island-boost.boosting {
   box-shadow: 0 0 30px rgba(255, 200, 0, 0.95);
   background: radial-gradient(circle at 32% 30%, #fff6b0, #ff9a00);
 }
 
 .island-stone {
-  position: absolute;
-  left: 18px; bottom: 24px;
-  width: 78px; height: 78px;
-  border-radius: 50%;
   background: radial-gradient(circle at 32% 30%, #c9b79a, #6b5840);
   color: #2a1c0c;
-  font-weight: 800;
   font-size: 15px;
-  border: none;
   box-shadow: 0 0 18px rgba(150, 120, 80, 0.55);
-  z-index: 7;
-  user-select: none;
-  touch-action: none;
-  cursor: pointer;
   line-height: 1.1;
 }
-.island-stone:active { transform: scale(0.93); }
+.island-stone.boosting {
+  box-shadow: 0 0 28px rgba(200, 160, 110, 0.95);
+  transform: scale(1.06);
+}
 .island-stone.boosting {
   box-shadow: 0 0 28px rgba(200, 160, 100, 0.95);
   background: radial-gradient(circle at 32% 30%, #e6d6bc, #8a7350);

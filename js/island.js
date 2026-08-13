@@ -20,6 +20,7 @@ window.PlanetIslandGame = (function () {
   // ---------- DOM ----------
   var canvas, selectEl, gridEl, hintEl, boostBtn, muteBtn, scoreEl;
   var heartsEl, overEl, overTitleEl, overSubEl, viewBtn;
+  var stickEl, stickThumbEl;
   var renderer, scene, camera;
   var starfield, islandGroup, ramps = [];
   var props = [];                  // 道具 / 陷阱
@@ -916,6 +917,7 @@ window.PlanetIslandGame = (function () {
     if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
     if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
     if (window.Bgm) window.Bgm.start();
+    showHint('左下摇杆遥控前后左右 · 点星球起跳 · 长按马力冲坡 · 🪨 砸对手', 3.2);
     triggerBossEntrance();
   }
 
@@ -946,6 +948,8 @@ window.PlanetIslandGame = (function () {
     hintEl = $('island-hint');
     boostBtn = $('island-boost');
     muteBtn = $('island-mute');
+    stickEl = $('island-stick');
+    stickThumbEl = $('island-stick-thumb');
     scoreEl = $('island-score');
     heartsEl = $('island-hearts');
     overEl = $('island-over');
@@ -1028,6 +1032,42 @@ window.PlanetIslandGame = (function () {
       stoneBtn.addEventListener('pointercancel', function () { stoneBtn.classList.remove('boosting'); });
     }
 
+    // 方向手柄（虚拟摇杆）：拖动控制前后左右
+    if (stickEl) {
+      var stickId = null;
+      var stickMax = 44;
+      function stickMove(cx, cy) {
+        var r = stickEl.getBoundingClientRect();
+        var ccx = r.left + r.width / 2, ccy = r.top + r.height / 2;
+        var dx = cx - ccx, dy = cy - ccy;
+        var d = Math.hypot(dx, dy);
+        if (d > stickMax) { dx = dx / d * stickMax; dy = dy / d * stickMax; }
+        stickThumbEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+        input.active = true;
+        input.x = clamp(dx / stickMax, -1, 1);   // 右 → +X
+        input.z = clamp(dy / stickMax, -1, 1);   // 下 → +Z(向后)，上 → -Z(向前)
+      }
+      function stickEnd() {
+        stickId = null;
+        stickThumbEl.style.transform = 'translate(0,0)';
+        input.active = false; input.x = 0; input.z = 0;
+      }
+      stickEl.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
+        stickId = e.pointerId;
+        try { stickEl.setPointerCapture(e.pointerId); } catch (err) {}
+        stickMove(e.clientX, e.clientY);
+      });
+      stickEl.addEventListener('pointermove', function (e) {
+        if (e.pointerId !== stickId) return;
+        e.preventDefault();
+        stickMove(e.clientX, e.clientY);
+      });
+      stickEl.addEventListener('pointerup', function (e) { if (e.pointerId === stickId) stickEnd(); });
+      stickEl.addEventListener('pointercancel', function (e) { if (e.pointerId === stickId) stickEnd(); });
+    }
+
     var againBtn = $('btn-island-again');
     if (againBtn) againBtn.addEventListener('click', function () { restart(); });
     var menuBtn = $('btn-island-menu');
@@ -1081,6 +1121,7 @@ window.PlanetIslandGame = (function () {
         get stones() { return stones; },
         get slowmo() { return slowmo; },
         get camMode() { return camMode; },
+        get input() { return input; },
         get lives() { return lives; },
         get over() { return over; },
         throwStone: function () { return throwStone(); }

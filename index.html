@@ -318,11 +318,16 @@
       <!-- 操作提示 -->
       <div class="island-hint" id="island-hint"></div>
 
-      <!-- 马力按钮 -->
-      <button class="island-boost" id="island-boost">马力</button>
+      <!-- 方向手柄（虚拟摇杆）：前后左右遥控 -->
+      <div class="island-stick" id="island-stick">
+        <div class="island-stick-thumb" id="island-stick-thumb"></div>
+      </div>
 
-      <!-- 投石攻击按钮 -->
-      <button class="island-stone" id="island-stone">🪨 石头</button>
+      <!-- 操作组合：马力 + 投石，放一起 -->
+      <div class="island-actions">
+        <button class="island-btn island-boost" id="island-boost">马力</button>
+        <button class="island-btn island-stone" id="island-stone">🪨 石头</button>
+      </div>
 
       <!-- 结算浮层 -->
       <div class="island-over" id="island-over" style="display:none;">
