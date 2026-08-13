@@ -95,6 +95,11 @@
       noise({ dur: 0.16, vol: 0.18, filterFreq: 2600 });
       tone({ freq: 720, freqEnd: 300, type: 'square', dur: 0.12, vol: 0.10 });
     },
+    // 激光发射：高频下滑 + 噪声扫频（像光束）
+    laser: function () {
+      tone({ freq: 1400, freqEnd: 320, type: 'sawtooth', dur: 0.16, vol: 0.12 });
+      noise({ dur: 0.12, vol: 0.12, filterFreq: 3200 });
+    },
     // 石头砸中天体的重击
     smash: function () {
       noise({ dur: 0.22, vol: 0.34, filterFreq: 1400 });

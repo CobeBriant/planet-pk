@@ -24,6 +24,21 @@ allprojects {
     }
 }
 
+// Force Java 17 source/target for every module so the build works with the locally installed JDK 17
+// (source level 17 also compiles fine under JDK 21). This override runs after Evaluate, so it wins
+// over the VERSION_21 values that `capacitor update` regenerates into the per-module build files.
+subprojects {
+    afterEvaluate { p ->
+        def androidExt = p.extensions.findByName('android')
+        if (androidExt) {
+            androidExt.compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
+            }
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
