@@ -121,6 +121,14 @@
     wrong: function () { tone({ freq: 300, freqEnd: 120, type: 'sawtooth', dur: 0.3, vol: 0.18 }); },
     powerup: function () { arp([392, 523, 659, 880], 'square', 0.09, 0.14, 60); },
     heal: function () { arp([523, 659, 784, 1046], 'triangle', 0.10, 0.16, 60); },
+    // 种下地雷：低沉“嗒”一声
+    minePlant: function () { tone({ freq: 160, freqEnd: 90, type: 'square', dur: 0.10, vol: 0.10 }); },
+    // 地雷爆炸：低频砸落 + 宽频噪声爆裂
+    mine: function () {
+      noise({ dur: 0.34, vol: 0.40, filterFreq: 1200 });
+      tone({ freq: 120, freqEnd: 40, type: 'sawtooth', dur: 0.34, vol: 0.24 });
+      tone({ freq: 360, freqEnd: 80, type: 'square', dur: 0.18, vol: 0.12 });
+    },
     win: function () { arp([523, 659, 784, 1046, 1318], 'triangle', 0.16, 0.18, 110); },
     lose: function () { arp([392, 330, 262, 196], 'sawtooth', 0.28, 0.18, 130); },
     // BOSS 专属号角：低沉长音 + 警报双音 + 重击

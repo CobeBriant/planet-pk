@@ -26,6 +26,7 @@ window.PlanetIslandGame = (function () {
   var props = [];                  // 道具 / 陷阱 / 障碍
   var bolts = [];                  // 玩家发射的激光弹
   var vendors = [];                // 街道摊贩（纯装饰，推车游走）
+  var mines = [];                  // 小星球 / BOSS 种下的地雷
   var player = null, npcs = [];
   var rafId = null, running = false, lastT = 0;
   var state = 'idle';            // idle | select | playing | bossIntro | over
@@ -56,9 +57,15 @@ window.PlanetIslandGame = (function () {
   var PLAYER_HP = 100;             // 玩家星球血量（被撞会掉，吃摊贩回血）
   var VENDOR_HEAL = 40;            // 吃一个摊贩回的血
   var VENDOR_RESPAWN = 8;          // 摊贩被吃后多久重新出现（秒）
-  var PLAYER_HIT_DMG = 6;          // 被小星球 / BOSS 撞一下掉的血
+  var PLAYER_HIT_DMG = 10;          // 被小星球 / BOSS 撞一下掉的血
   var PLAYER_HIT_GRACE = 0.7;      // 玩家受击间隔（防止一帧连扣）
   var PLAYER_RESPAWN_GRACE = 2.0;  // 复活后无敌时间（防止复活又被挤下岛秒掉第二颗心）
+  // 地雷（某些小星球 / BOSS 会在脚下种）
+  var MINE_DMG = 22;               // 地雷爆炸对范围内星球造成的伤害
+  var MINE_FUSE_MIN = 10, MINE_FUSE_MAX = 30;   // 地雷随机引爆时间（秒）
+  var MINE_RADIUS = 26;            // 地雷爆炸杀伤半径
+  var MINE_PLANT_MIN = 7, MINE_PLANT_MAX = 15;  // 小星球种地雷的间隔（秒）
+  var MAX_MINES = 10;              // 同屏最多地雷数
 
   // BOSS 专属出场特效
   var bossFx = [];                 // 冲击波 / 粒子
@@ -267,6 +274,7 @@ window.PlanetIslandGame = (function () {
       group: group, sphere: sphere, label: label, R: R, body: body, mass: isBoss ? 9 : massFactor(body),
       isBoss: !!isBoss, isPlayer: !!isPlayer, vel: new THREE.Vector3(), grounded: false, jumpCd: 0, out: false,
       hp: maxHp, maxHp: maxHp, hpBar: hpBar, _trapT: 0, _grace: 0, _phGrace: 0,
+      mineCd: isPlayer ? 0 : (isBoss ? rand(MINE_PLANT_MIN, MINE_PLANT_MAX) * 1.3 : rand(MINE_PLANT_MIN, MINE_PLANT_MAX)),
       ai: { tx: rand(-30, 30), tz: rand(-30, 30), hopCd: rand(1, 4), seek: false, dash: 0, dashTx: 0, dashTz: 0 }
     };
     if (hpBar) updateHpBar(b);
@@ -557,6 +565,79 @@ window.PlanetIslandGame = (function () {
     spawnHitSpark(player.group.position.x, player.group.position.y + player.R * 0.5, player.group.position.z);
     sfx('hit');
     // 血条空了 → 交给 detectOuts 统一扣红心 + 复活（与掉下岛走同一条路径）
+  }
+  // ============ 地雷 ============
+  function makeMine(pos) {
+    var g = new THREE.Group();
+    var base = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.5, 2.0, 1.1, 12),
+      new THREE.MeshStandardMaterial({ color: 0x252a33, roughness: 0.9, metalness: 0.2 })
+    );
+    base.position.y = 0.55; g.add(base);
+    var cap = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
+    cap.position.y = 1.5; g.add(cap);
+    var gy = terrainHeight(pos.x, pos.z);
+    g.position.set(pos.x, gy, pos.z);
+    islandGroup.add(g);
+    return { group: g, light: cap, x: pos.x, y: gy, z: pos.z, fuse: rand(MINE_FUSE_MIN, MINE_FUSE_MAX), t: 0 };
+  }
+  function clearMines() {
+    for (var i = 0; i < mines.length; i++) { if (mines[i].group.parent) mines[i].group.parent.remove(mines[i].group); }
+    mines = [];
+  }
+  function spawnMine(pos) {
+    if (mines.length >= MAX_MINES) return;
+    mines.push(makeMine(pos));
+    sfx('minePlant');
+  }
+  // 某些小星球（含 BOSS）周期性在脚下种地雷
+  function plantMinesFromNPCs(dt) {
+    for (var i = 0; i < npcs.length; i++) {
+      var n = npcs[i];
+      if (n._dying || n.out || !n.grounded) continue;
+      n.mineCd -= dt;
+      if (n.mineCd <= 0) {
+        n.mineCd = (n.isBoss ? 1.3 : 1.0) * rand(MINE_PLANT_MIN, MINE_PLANT_MAX);
+        spawnMine({ x: n.group.position.x, z: n.group.position.z });
+      }
+    }
+  }
+  function explodeMine(m) {
+    spawnBossParticles(m.x, m.y + 1, m.z);
+    var ring = new THREE.Mesh(
+      new THREE.RingGeometry(1, 1.8, 48),
+      new THREE.MeshBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 0.95, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2; ring.position.set(m.x, m.y + 1, m.z);
+    islandGroup.add(ring);
+    bossFx.push({ type: 'ring', mesh: ring, life: 0.9 });
+    sfx('mine');
+    if (player && !player._done) {
+      var d = Math.hypot(player.group.position.x - m.x, player.group.position.z - m.z);
+      if (d < MINE_RADIUS) damagePlayer(MINE_DMG);
+    }
+    for (var j = 0; j < npcs.length; j++) {
+      var n = npcs[j];
+      if (n.out || n._dying) continue;
+      var d2 = Math.hypot(n.group.position.x - m.x, n.group.position.z - m.z);
+      if (d2 < MINE_RADIUS) damageNPC(n, MINE_DMG, m);
+    }
+  }
+  function updateMines(dt) {
+    for (var i = mines.length - 1; i >= 0; i--) {
+      var m = mines[i];
+      m.fuse -= dt; m.t += dt;
+      var near = Math.max(0, MINE_FUSE_MAX - m.fuse);
+      var blink = 0.5 + 0.5 * Math.sin(m.t * (6 + near * 1.0));
+      m.light.material.color.setRGB(1, 0.18 * blink, 0.15 * blink);
+      var s = 1 + 0.35 * blink * (m.fuse < 4 ? 1.6 : 1);
+      m.light.scale.set(s, s, s);
+      if (m.fuse <= 0) {
+        explodeMine(m);
+        if (m.group.parent) m.group.parent.remove(m.group);
+        mines.splice(i, 1);
+      }
+    }
   }
   function spawnMinion() {
     var pool = getPool();
@@ -1087,6 +1168,7 @@ window.PlanetIslandGame = (function () {
     lives = LIVES; updateHearts();
     npcs.forEach(function (n) { scene.remove(n.group); }); npcs = [];
     clearBolts();
+    clearMines();
     spawnNPCs();
     if (player) {
       player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0);
@@ -1228,6 +1310,8 @@ window.PlanetIslandGame = (function () {
       detectOuts();
       updateBolts(sdt);
       maintainMinions(sdt);
+      plantMinesFromNPCs(sdt);   // 小星球 / BOSS 周期性种地雷
+      updateMines(sdt);          // 地雷倒计时 + 引爆
       checkVendorEat();
     }
     if (player) rollSphere(player, sdt);
@@ -1294,7 +1378,7 @@ window.PlanetIslandGame = (function () {
     if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
     if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
     if (window.Bgm) window.Bgm.start();
-    showHint('摇杆遥控前后左右 · 点星球起跳 · 长按马力冲坡 · ⚡激光射爆对手（含BOSS）· 撞摊贩回血', 3.6);
+    showHint('摇杆遥控前后左右 · 点星球起跳 · 长按马力冲坡 · ⚡激光射爆对手（含BOSS）· 撞摊贩回血 · 小心💣地雷', 3.8);
     triggerBossEntrance();
   }
 
@@ -1489,6 +1573,7 @@ window.PlanetIslandGame = (function () {
     boosting = false;
     clearBolts();
     clearVendors();
+    clearMines();
     if (window.Bgm) window.Bgm.boss(false);
   }
 
@@ -1501,6 +1586,7 @@ window.PlanetIslandGame = (function () {
         get vendors() { return vendors; },
         props: props,
         get bolts() { return bolts; },
+        get mines() { return mines; },
         get slowmo() { return slowmo; },
         get camMode() { return camMode; },
         get input() { return input; },
