@@ -1150,12 +1150,12 @@ html, body {
 /* ===== 虚拟摇杆（方向手柄）：前后左右 ===== */
 .island-stick {
   position: absolute;
-  left: 16px; bottom: 22px;
-  width: 116px; height: 116px;
+  left: 14px; bottom: 20px;
+  width: 152px; height: 152px;
   border-radius: 50%;
   background: radial-gradient(circle at 50% 50%, rgba(20, 30, 60, 0.55), rgba(6, 10, 28, 0.7));
-  border: 2px solid rgba(120, 170, 255, 0.55);
-  box-shadow: inset 0 0 18px rgba(60, 110, 220, 0.45), 0 0 14px rgba(40, 80, 180, 0.4);
+  border: 3px solid rgba(120, 170, 255, 0.6);
+  box-shadow: inset 0 0 22px rgba(60, 110, 220, 0.5), 0 0 16px rgba(40, 80, 180, 0.45);
   z-index: 7;
   touch-action: none;
   user-select: none;
@@ -1167,7 +1167,7 @@ html, body {
   left: 50%; top: 50%;
   width: 2px; height: 64%;
   transform: translate(-50%, -50%);
-  background: rgba(150, 190, 255, 0.28);
+  background: rgba(150, 190, 255, 0.32);
 }
 .island-stick::after {
   content: "";
@@ -1175,16 +1175,16 @@ html, body {
   left: 50%; top: 50%;
   width: 64%; height: 2px;
   transform: translate(-50%, -50%);
-  background: rgba(150, 190, 255, 0.28);
+  background: rgba(150, 190, 255, 0.32);
 }
 .island-stick-thumb {
   position: absolute;
   left: 50%; top: 50%;
-  width: 50px; height: 50px;
-  margin: -25px 0 0 -25px;
+  width: 64px; height: 64px;
+  margin: -32px 0 0 -32px;
   border-radius: 50%;
   background: radial-gradient(circle at 34% 30%, #bfe2ff, #4a86ff);
-  box-shadow: 0 0 16px rgba(90, 150, 255, 0.85);
+  box-shadow: 0 0 20px rgba(90, 150, 255, 0.9);
   transition: transform 0.04s linear;
   pointer-events: none;
 }

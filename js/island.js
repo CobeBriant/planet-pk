@@ -135,29 +135,33 @@ window.PlanetIslandGame = (function () {
   function bossFaceTexture() {
     var c = document.createElement('canvas'); c.width = 256; c.height = 256;
     var x = c.getContext('2d');
+    // 每只眼睛独立绘制，间距拉大、去掉会融合成“独眼”的红色光晕
     function eye(cx) {
       x.save();
-      x.shadowColor = '#ff2d2d'; x.shadowBlur = 30;
+      // 眼白（黄）
       x.fillStyle = '#ffe14b';
-      x.beginPath(); x.ellipse(cx, 110, 31, 42, 0, 0, Math.PI * 2); x.fill();
-      x.shadowBlur = 0;
-      x.fillStyle = '#1a0000';
-      x.beginPath(); x.ellipse(cx, 118, 14, 32, 0, 0, Math.PI * 2); x.fill();
-      x.fillStyle = 'rgba(255,255,255,0.92)';
-      x.beginPath(); x.arc(cx - 6, 102, 6, 0, Math.PI * 2); x.fill();
+      x.beginPath(); x.ellipse(cx, 104, 30, 38, 0, 0, Math.PI * 2); x.fill();
+      // 红色细描边（不再用大 blur，避免两只眼的光晕连成一只）
+      x.lineWidth = 6; x.strokeStyle = '#c41a1a'; x.stroke();
+      // 瞳孔（黑）
+      x.fillStyle = '#160000';
+      x.beginPath(); x.ellipse(cx, 110, 14, 30, 0, 0, Math.PI * 2); x.fill();
+      // 高光
+      x.fillStyle = 'rgba(255,255,255,0.95)';
+      x.beginPath(); x.arc(cx - 6, 96, 6, 0, Math.PI * 2); x.fill();
       x.restore();
     }
-    eye(86); eye(170);
-    // 凶恶怒眉（内低外高）
-    x.strokeStyle = '#160c20'; x.lineWidth = 24; x.lineCap = 'round';
-    x.beginPath(); x.moveTo(34, 62); x.lineTo(124, 94); x.stroke();
-    x.beginPath(); x.moveTo(222, 62); x.lineTo(132, 94); x.stroke();
+    eye(74); eye(182);   // 两只眼明显分开
+    // 凶恶怒眉（内低外高），分两段、不跨过两眼中间
+    x.strokeStyle = '#160c20'; x.lineWidth = 22; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(24, 58); x.lineTo(112, 86); x.stroke();
+    x.beginPath(); x.moveTo(232, 58); x.lineTo(144, 86); x.stroke();
     // 邪恶咧嘴 + 獠牙
     x.strokeStyle = '#160c20'; x.lineWidth = 14;
-    x.beginPath(); x.moveTo(78, 184); x.quadraticCurveTo(128, 222, 178, 184); x.stroke();
+    x.beginPath(); x.moveTo(74, 182); x.quadraticCurveTo(128, 220, 182, 182); x.stroke();
     x.fillStyle = '#fff';
-    x.beginPath(); x.moveTo(104, 198); x.lineTo(112, 224); x.lineTo(120, 198); x.closePath(); x.fill();
-    x.beginPath(); x.moveTo(136, 198); x.lineTo(144, 224); x.lineTo(152, 198); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(100, 196); x.lineTo(108, 222); x.lineTo(116, 196); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(140, 196); x.lineTo(148, 222); x.lineTo(156, 196); x.closePath(); x.fill();
     var t = new THREE.Texture(c); t.needsUpdate = true;
     return t;
   }
@@ -1035,7 +1039,7 @@ window.PlanetIslandGame = (function () {
     // 方向手柄（虚拟摇杆）：拖动控制前后左右
     if (stickEl) {
       var stickId = null;
-      var stickMax = 44;
+      var stickMax = 44;   // 摇杆最大偏移 = (152-64)/2
       function stickMove(cx, cy) {
         var r = stickEl.getBoundingClientRect();
         var ccx = r.left + r.width / 2, ccy = r.top + r.height / 2;
