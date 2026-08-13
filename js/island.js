@@ -52,6 +52,14 @@ window.PlanetIslandGame = (function () {
   var BOSS_HP = 200;               // BOSS 血量（约 17 发）
   var TRAP_FALL = 5.0;             // 在陷阱上停留多久会掉下去（秒）
 
+  // 玩家血条 / 摊贩回血
+  var PLAYER_HP = 100;             // 玩家星球血量（被撞会掉，吃摊贩回血）
+  var VENDOR_HEAL = 40;            // 吃一个摊贩回的血
+  var VENDOR_RESPAWN = 8;          // 摊贩被吃后多久重新出现（秒）
+  var PLAYER_HIT_DMG = 6;          // 被小星球 / BOSS 撞一下掉的血
+  var PLAYER_HIT_GRACE = 0.7;      // 玩家受击间隔（防止一帧连扣）
+  var PLAYER_RESPAWN_GRACE = 2.0;  // 复活后无敌时间（防止复活又被挤下岛秒掉第二颗心）
+
   // BOSS 专属出场特效
   var bossFx = [];                 // 冲击波 / 粒子
   var bossIntroT = 0;             // 出场动画倒计时
@@ -248,20 +256,17 @@ window.PlanetIslandGame = (function () {
     label.renderOrder = 5;
     group.add(label);
 
-    // 血条（仅 BOSS / 小星球有；玩家用红心）
-    var hpBar = null;
-    if (!isPlayer) {
-      hpBar = makeHpBar(!!isBoss);
-      hpBar.sprite.position.set(0, R * 1.75, 0);
-      group.add(hpBar.sprite);
-    }
+    // 血条（BOSS / 小星球 / 玩家都有；玩家用蓝绿色调，由 updateHpBar 自动配色）
+    var hpBar = makeHpBar(!!isBoss);
+    hpBar.sprite.position.set(0, R * 1.75, 0);
+    group.add(hpBar.sprite);
 
     scene.add(group);
-    var maxHp = isBoss ? BOSS_HP : MINION_HP;
+    var maxHp = isBoss ? BOSS_HP : (isPlayer ? PLAYER_HP : MINION_HP);
     var b = {
       group: group, sphere: sphere, label: label, R: R, body: body, mass: isBoss ? 9 : massFactor(body),
       isBoss: !!isBoss, isPlayer: !!isPlayer, vel: new THREE.Vector3(), grounded: false, jumpCd: 0, out: false,
-      hp: maxHp, maxHp: maxHp, hpBar: hpBar, _trapT: 0, _grace: 0,
+      hp: maxHp, maxHp: maxHp, hpBar: hpBar, _trapT: 0, _grace: 0, _phGrace: 0,
       ai: { tx: rand(-30, 30), tz: rand(-30, 30), hopCd: rand(1, 4), seek: false, dash: 0, dashTx: 0, dashTz: 0 }
     };
     if (hpBar) updateHpBar(b);
@@ -543,6 +548,16 @@ window.PlanetIslandGame = (function () {
     else slowmo = Math.max(slowmo, 1.0);
     focus.push(n);
   }
+  // 玩家被小星球 / BOSS 撞到：掉血（有受击间隔，防止一帧连扣）
+  function damagePlayer(dmg) {
+    if (!player || player._done || player._grace > 0 || player._phGrace > 0) return;
+    player.hp -= dmg; if (player.hp < 0) player.hp = 0;
+    if (player.hpBar) updateHpBar(player);
+    player._phGrace = PLAYER_HIT_GRACE;
+    spawnHitSpark(player.group.position.x, player.group.position.y + player.R * 0.5, player.group.position.z);
+    sfx('hit');
+    // 血条空了 → 交给 detectOuts 统一扣红心 + 复活（与掉下岛走同一条路径）
+  }
   function spawnMinion() {
     var pool = getPool();
     var b = pool[(Math.random() * pool.length) | 0];
@@ -771,6 +786,16 @@ window.PlanetIslandGame = (function () {
   function updateVendors(dt) {
     for (var i = 0; i < vendors.length; i++) {
       var v = vendors[i];
+      if (v.eaten) {                       // 被吃掉后先消失，过一会儿换个位置重新营业
+        v.cooldown -= dt;
+        if (v.cooldown <= 0) {
+          v.eaten = false; v.group.visible = true;
+          v.angle = rand(0, 6.28);
+          v.radius = islandR * (0.33 + 0.5 * Math.random());
+          v.dir = (Math.random() < 0.5) ? 1 : -1;
+        }
+        continue;
+      }
       v.angle += v.dir * v.speed * dt;
       var r = v.radius + Math.sin(v.angle * 1.7) * islandR * 0.06;
       var px = Math.cos(v.angle) * r, pz = Math.sin(v.angle) * r;
@@ -779,6 +804,30 @@ window.PlanetIslandGame = (function () {
       // 朝切线方向（推车前进方向）
       v.group.rotation.y = v.angle + (v.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
     }
+  }
+  // 玩家星球碰到摊贩 → 吃掉回血（摊贩暂时消失，之后重新出现）
+  function checkVendorEat() {
+    if (!player) return;
+    for (var i = 0; i < vendors.length; i++) {
+      var v = vendors[i];
+      if (v.eaten) continue;
+      var dx = player.group.position.x - v.group.position.x;
+      var dz = player.group.position.z - v.group.position.z;
+      var dy = player.group.position.y - (v.group.position.y + 3);
+      if (dx * dx + dy * dy + dz * dz < (player.R + v.radius + 1.6) * (player.R + v.radius + 1.6)) {
+        eatVendor(v);
+      }
+    }
+  }
+  function eatVendor(v) {
+    v.eaten = true; v.cooldown = VENDOR_RESPAWN; v.group.visible = false;
+    if (player && player.hpBar) {
+      player.hp = Math.min(player.maxHp, player.hp + VENDOR_HEAL);
+      updateHpBar(player);
+    }
+    sfx('heal');
+    showHint('🍴 吃到' + v.kind.label + '！回血 +' + VENDOR_HEAL, 1.2);
+    spawnHitSpark(v.group.position.x, v.group.position.y + 3, v.group.position.z);
   }
 
   // ============ 物理 ============
@@ -797,9 +846,15 @@ window.PlanetIslandGame = (function () {
     } else {
       b.grounded = false;
     }
-    // 掉下岛
-    if (b.group.position.y < FALL_Y) b.out = true;
-    else applyProps(b, dt);
+    // 掉下岛（复活无敌期内不判定掉岛，并把玩家拉回安全点，避免复活瞬间被挤下岛又扣第二颗心）
+    if (b.group.position.y < FALL_Y) {
+      if (b === player && b._grace > 0) {
+        b.group.position.set(islandR * 0.5, b.R, islandR * 0.5);
+        b.vel.set(0, 0, 0);
+      } else {
+        b.out = true;
+      }
+    } else applyProps(b, dt);
   }
 
   function rollSphere(b, dt) {
@@ -906,7 +961,7 @@ window.PlanetIslandGame = (function () {
       var j = -(1 + e) * vn / (1 / a.mass + 1 / b.mass);
       a.vel.x -= (j / a.mass) * nx; a.vel.y -= (j / a.mass) * ny; a.vel.z -= (j / a.mass) * nz;
       b.vel.x += (j / b.mass) * nx; b.vel.y += (j / b.mass) * ny; b.vel.z += (j / b.mass) * nz;
-      if (a === player || b === player) { collisions++; updateScore(); sfx('hit'); }
+      if (a === player || b === player) { collisions++; updateScore(); sfx('hit'); damagePlayer(PLAYER_HIT_DMG); }
     }
   }
 
@@ -962,16 +1017,26 @@ window.PlanetIslandGame = (function () {
   function updateHearts() {
     if (heartsEl) heartsEl.textContent = '❤'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, LIVES - lives));
   }
+  // 玩家复活：回到安全点、满血、清空陷阱/受击计时，并开启无敌期（防止复活又被秒扣第二颗心）
+  function respawnPlayer() {
+    player.group.position.set(islandR * 0.5, player.R, islandR * 0.5);
+    player.vel.set(0, 0, 0);
+    player.out = false;
+    player._trapT = 0;                 // 关键：清空陷阱停留计时，否则落回中心陷阱会秒掉第二颗心
+    player.hp = player.maxHp; if (player.hpBar) updateHpBar(player);
+    player._respawning = false; player._outHandled = false;
+    player._grace = PLAYER_RESPAWN_GRACE;   // 无敌期：这段时间再被撞下岛也不扣心
+  }
   // 检测到掉下岛的天体 → 触发慢动作，但不立即结算
   function detectOuts() {
-    // 玩家掉岛：用 _outHandled + 复活保护期(_grace) 防止一次掉落连扣两颗红心
-    if (player && !player._done && player.out && player._grace <= 0 && !player._outHandled) {
+    // 玩家掉岛 / 血条耗尽：用 _outHandled + 复活无敌期(_grace) 防止一次事件连扣两颗红心
+    if (player && !player._done && !player._outHandled && player._grace <= 0 && (player.out || player.hp <= 0)) {
       player.out = false; player._outHandled = true; lives--; updateHearts(); sfx('lifeLost');
       if (lives <= 0) player._pendingEnd = 'lose';
       else player._respawning = true;
       focus.push(player);
       slowmo = Math.max(slowmo, 1.2);
-      showHint(player._pendingEnd ? '💥 KO！红心耗尽' : 'KO！掉下岛 -1 ❤', 1.4);
+      showHint(player._pendingEnd ? '💥 KO！红心耗尽' : (player.hp <= 0 ? '💥 被撞爆！-1 ❤' : 'KO！掉下岛 -1 ❤'), 1.4);
     }
     for (var i = 0; i < npcs.length; i++) {
       if (npcs[i].out && !npcs[i]._dying) {
@@ -992,10 +1057,8 @@ window.PlanetIslandGame = (function () {
     if (player) {
       if (player._pendingEnd === 'lose') { endGame(false); }
       else if (player._respawning) {
-        player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0);
-        player._respawning = false; player._outHandled = false;
-        player._grace = 1.4;   // 复活保护期：这段时间再被撞下岛也不扣第二颗心
-        showHint('稳住了！继续把对手挤下去！', 1.4);
+        respawnPlayer();
+        showHint('稳住了！无敌 2 秒，去吃摊贩回血～', 1.4);
       }
     }
     if (bossDefeated && !over) { endGame(true); return; }
@@ -1027,7 +1090,8 @@ window.PlanetIslandGame = (function () {
     spawnNPCs();
     if (player) {
       player.group.position.set(0, player.R, 0); player.vel.set(0, 0, 0);
-      player.out = false; player._done = false; player._respawning = false; player._pendingEnd = null; player._outHandled = false; player._grace = 0;
+      player.out = false; player._done = false; player._respawning = false; player._pendingEnd = null; player._outHandled = false; player._grace = 0; player._phGrace = 0;
+      player.hp = player.maxHp; if (player.hpBar) updateHpBar(player);
     }
     bossDefeated = false;
     slowmo = 0; focus = []; camMode = 'follow';
@@ -1153,16 +1217,18 @@ window.PlanetIslandGame = (function () {
     var sdt = slow ? dt * 0.32 : dt;   // 慢动作时物理减速
     if (boltCd > 0) boltCd -= dt;
     if (player && player._grace > 0) player._grace -= dt;
+    if (player && player._phGrace > 0) player._phGrace -= dt;
 
     if (state === 'playing') applyPlayerInput(sdt);
     if (player) { stepBeing(player, sdt); if (player.jumpCd > 0) player.jumpCd -= sdt; }
     for (var i = 0; i < npcs.length; i++) { stepNPC(npcs[i], sdt); stepBeing(npcs[i], sdt); }
     if (state === 'playing') {
-      for (var a = 0; a < npcs.length; a++) if (!npcs[a]._dying) collide(player, npcs[a]);
+      for (var a = 0; a < npcs.length; a++) if (!npcs[a]._dying && !(player && player._grace > 0)) collide(player, npcs[a]);
       for (var c = 0; c < npcs.length; c++) for (var d = c + 1; d < npcs.length; d++) if (!npcs[c]._dying && !npcs[d]._dying) collide(npcs[c], npcs[d]);
       detectOuts();
       updateBolts(sdt);
       maintainMinions(sdt);
+      checkVendorEat();
     }
     if (player) rollSphere(player, sdt);
     for (var e = 0; e < npcs.length; e++) rollSphere(npcs[e], sdt);
@@ -1228,7 +1294,7 @@ window.PlanetIslandGame = (function () {
     if (viewBtn) { viewBtn.textContent = '🔄 视角'; viewBtn.classList.remove('active'); }
     if (window.Sfx && window.Sfx.unlock) window.Sfx.unlock();
     if (window.Bgm) window.Bgm.start();
-    showHint('摇杆遥控前后左右 · 点星球起跳 · 长按马力冲坡 · ⚡激光射爆对手（含BOSS）', 3.6);
+    showHint('摇杆遥控前后左右 · 点星球起跳 · 长按马力冲坡 · ⚡激光射爆对手（含BOSS）· 撞摊贩回血', 3.6);
     triggerBossEntrance();
   }
 
@@ -1396,6 +1462,8 @@ window.PlanetIslandGame = (function () {
     });
 
     window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', resize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
   }
 
   // ============ 对外 ============

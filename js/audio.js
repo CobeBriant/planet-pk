@@ -120,6 +120,7 @@
     correct: function () { arp([523, 659, 784], 'square', 0.10, 0.16, 70); },
     wrong: function () { tone({ freq: 300, freqEnd: 120, type: 'sawtooth', dur: 0.3, vol: 0.18 }); },
     powerup: function () { arp([392, 523, 659, 880], 'square', 0.09, 0.14, 60); },
+    heal: function () { arp([523, 659, 784, 1046], 'triangle', 0.10, 0.16, 60); },
     win: function () { arp([523, 659, 784, 1046, 1318], 'triangle', 0.16, 0.18, 110); },
     lose: function () { arp([392, 330, 262, 196], 'sawtooth', 0.28, 0.18, 130); },
     // BOSS 专属号角：低沉长音 + 警报双音 + 重击

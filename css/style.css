@@ -13,7 +13,8 @@ html, body {
 
 #app {
   width: 100vw;
-  height: 100vh;
+  height: 100%;
+  height: 100dvh;   /* 动态视口高度：避开安卓手势/三键导航条，不会把内容推到导航条下面 */
   position: relative;
   overflow: hidden;
 }
@@ -32,7 +33,7 @@ html, body {
   top: 0; left: 0;
   width: 100%;
   z-index: 10;
-  padding: 16px 20px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1054,6 +1055,9 @@ html, body {
   flex-direction: column;
   background: #03020c;
   overflow: hidden;
+  /* 避开安卓底部导航条（主页/返回/切屏）：把画布与控制区整体抬到导航条上方 */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
 }
 .island-stage {
   position: relative;
